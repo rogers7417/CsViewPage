@@ -1,0 +1,189 @@
+[
+  {
+    "Name": "1943(김포구래점)",
+    "OrderPlatformURL__c": "TPAY_1943041",
+    "Payment__c": "PostPaid",
+    "Category": "한식"
+  },
+  {
+    "Name": "할배솥뚜껑(천안신부점)",
+    "OrderPlatformURL__c": "TPAY_1943045",
+    "Payment__c": "PostPaid",
+    "Category": "한식"
+  },
+  {
+    "Name": "1943(창원상남점)",
+    "OrderPlatformURL__c": "TPAY_1943047",
+    "Payment__c": "PostPaid",
+    "Category": "양식"
+  },
+  {
+    "Name": "1943(안산선부점)",
+    "OrderPlatformURL__c": "TPAY_1943049",
+    "Payment__c": "PostPaid",
+    "Category": "까페"
+  },
+  {
+    "Name": "1943(광주첨단점)",
+    "OrderPlatformURL__c": "TPAY_1943052",
+    "Payment__c": "PostPaid",
+    "Category": "양식"
+  },
+  {
+    "Name": "1943(속초점)",
+    "OrderPlatformURL__c": "TPAY_1943053",
+    "Payment__c": "PostPaid",
+    "Category": "까페"
+  },
+  {
+    "Name": "ACE뮤직타운(방이점)",
+    "OrderPlatformURL__c": "TPAY_ACEMJ002",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "안주박사술박사(서면점)",
+    "OrderPlatformURL__c": "TPAY_AJBS002",
+    "Payment__c": "PostPaid",
+    "Category": "포차"
+  },
+  {
+    "Name": "압구정제주집(송도점)",
+    "OrderPlatformURL__c": "TPAY_AKJJJ004",
+    "Payment__c": "PostPaid",
+    "Category": "고기집"
+  },
+  {
+    "Name": "압구정제주집(창원점)",
+    "OrderPlatformURL__c": "TPAY_AKJJJ005",
+    "Payment__c": "PostPaid",
+    "Category": "퓨전"
+  },
+  {
+    "Name": "압구정제주집(강릉교동점)",
+    "OrderPlatformURL__c": "TPAY_AKJJJ007",
+    "Payment__c": "PostPaid",
+    "Category": "포차"
+  },
+  {
+    "Name": "압구정제주집(신사점)",
+    "OrderPlatformURL__c": "TPAY_AKJJJ009",
+    "Payment__c": "PostPaid",
+    "Category": "포차"
+  },
+  {
+    "Name": "아스라이(순천조례점)",
+    "OrderPlatformURL__c": "TPAY_ASLE002",
+    "Payment__c": "PostPaid",
+    "Category": "양식"
+  },
+  {
+    "Name": "아스라이(진주경상대점)",
+    "OrderPlatformURL__c": "TPAY_ASLE004",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "아스라이(전주본점)",
+    "OrderPlatformURL__c": "TPAY_ASLE005",
+    "Payment__c": "PostPaid",
+    "Category": "치킨"
+  },
+  {
+    "Name": "아스라이(첨단시리단길점)",
+    "OrderPlatformURL__c": "TPAY_ASLE010",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "안씨네닭발(평택점)",
+    "OrderPlatformURL__c": "TPAY_ASNDB002",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "어소(전주신시가지점)",
+    "OrderPlatformURL__c": "TPAY_ASO002",
+    "Payment__c": "PostPaid",
+    "Category": "퓨전"
+  },
+  {
+    "Name": "별밤뮤직타운(청주점)",
+    "OrderPlatformURL__c": "TPAY_BBMJTY002",
+    "Payment__c": "PostPaid",
+    "Category": "퓨전"
+  },
+  {
+    "Name": "별밤뮤직타운(청주2호점)",
+    "OrderPlatformURL__c": "TPAY_BBMJTY003",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "비비큐(종각점)",
+    "OrderPlatformURL__c": "TPAY_BBQ005",
+    "Payment__c": "Prepaid",
+    "Category": "까페"
+  },
+  {
+    "Name": "부대찌개대사관(구로디지털본점)",
+    "OrderPlatformURL__c": "TPAY_BDCGDSG002",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "부대찌개대사관(선릉직영점)",
+    "OrderPlatformURL__c": "TPAY_BDCGDSG003",
+    "Payment__c": "PostPaid",
+    "Category": "고기집"
+  },
+  {
+    "Name": "부대찌개대사관(화정직영점)",
+    "OrderPlatformURL__c": "TPAY_BDCGDSG004",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "부대찌개대사관(교대점)",
+    "OrderPlatformURL__c": "TPAY_BDCGDSG005",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "부대찌개대사관(마곡직영점)",
+    "OrderPlatformURL__c": "TPAY_BDCGDSG006",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "부대옥(홍대점)",
+    "OrderPlatformURL__c": "TPAY_BDOAK002",
+    "Payment__c": "Prepaid",
+    "Category": "고기집"
+  },
+  {
+    "Name": "복달포차(홍대점)",
+    "OrderPlatformURL__c": "TPAY_BDPOC002",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "원쁠집",
+    "OrderPlatformURL__c": "TPAY_BG002",
+    "Payment__c": "PostPaid",
+    "Category": "이자카야"
+  },
+  {
+    "Name": "백향담(단양점)",
+    "OrderPlatformURL__c": "TPAY_BHD002",
+    "Payment__c": "PostPaid",
+    "Category": "까페"
+  },
+  {
+    "Name": "구도로통닭(부평본점)",
+    "OrderPlatformURL__c": "SPC0000032075",
+    "Payment__c": "PostPaid",
+    "Category": "까페"
+  }
+
+]

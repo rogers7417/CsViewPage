@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Salesforce 로그인</title>
+</head>
+<body>
+  <h2>어디 볼래?</h2>
+  <button onclick="loginWithSalesforce()">로그인</button>
+
+  <script>
+    function loginWithSalesforce() {
+      const clientId = '3MVG9q4K8Dm94dAxXTDbSKFnPyFDlncA_StJCKSS0XudUk9U.nXXnO7M6Rz050rW3iN_ZvAy1L1X7mdSMo7hO';
+      const redirectUri = encodeURIComponent('http://localhost:3003/callback');
+      const responseType = 'code';
+      const loginUrl = `https://login.salesforce.com/services/oauth2/authorize?response_type=${responseType}&client_id=${clientId}&redirect_uri=${redirectUri}`;
+
+      window.location.href = loginUrl;
+    }
+  </script>
+</body>
+</html>

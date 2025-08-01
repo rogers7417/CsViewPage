@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <title>매장 검색</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body,
+    html {
+      height: 100%;
+      margin: 0;
+    }
+
+    .container-fluid {
+      height: 100%;
+    }
+
+    .left-panel {
+      height: 100%;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .search-area {
+      padding: 1rem;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .store-list-wrapper {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 1rem 1rem 1rem;
+    }
+
+    .bottom-panel {
+      background-color: #f8f9fa;
+      border-top: 1px solid #ddd;
+      padding: 1rem;
+      height: 150px;
+      /* 필요 시 더 키워도 됩니다 */
+      overflow-y: auto;
+    }
+
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    iframe {
+      padding-top: 20px;
+      width: 100%;
+      aspect-ratio: 3 / 2;
+      border: none;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container-fluid">
+    <div class="row h-100">
+      <!-- 왼쪽 패널 -->
+      <div class="col-3 left-panel">
+        <div class="search-area">
+          <h5 class="mb-3">검색 해봥</h5>
+          <div class="input-group">
+            <input type="text" id="search-box" class="form-control" placeholder="매장명 입력" />
+            <button id="search-button" class="btn btn-primary">검색</button>
+          </div>
+        </div>
+        <div class="store-list-wrapper">
+          <div class="list-group" id="store-list"></div>
+        </div>
+      </div>
+
+      <!-- 오른쪽 패널 -->
+      <div class="col-9 right-panel">
+        <iframe id="preview-frame" src=""></iframe>
+        <div id="bottom-content" class="bottom-panel">
+          <!-- 여기에 원하는 콘텐츠 추가 가능 -->
+          <p class="text-muted text-center m-0 py-3"> Contract Info...</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const listEl = document.getElementById('store-list');
+    const iframe = document.getElementById('preview-frame');
+    const searchBox = document.getElementById('search-box');
+    const searchBtn = document.getElementById('search-button');
+
+    function fetchAndRender(keyword = '') {
+      fetch(`/api/spaces?keyword=${encodeURIComponent(keyword)}`)
+        .then(response => response.json())
+        .then(data => {
+          listEl.innerHTML = '';
+          let firstLoaded = false;
+
+          data.forEach(store => {
+            const fullUrl = store.OrderPlatformURL__c || '';
+            const match = fullUrl.match(/\/store\/([^\/?#]+)/);
+            const code = match ? match[1] : '';
+
+            const item = document.createElement('button');
+            item.className = 'list-group-item list-group-item-action';
+            item.textContent = store.Name;
+
+            if (store.IsActive__c === false) {
+              // 비활성 매장 스타일 변경
+              item.classList.add('disabled'); // Bootstrap 기본 회색 스타일
+              item.textContent += ' (비활성)';
+              item.style.opacity = '0.6';
+              item.style.pointerEvents = 'none'; // 클릭 막으려면 추가
+            }
+
+            item.addEventListener('click', () => {
+              // 1. iframe src 변경
+              iframe.src = `https://order2.torder.io/v/1/0/4/?storeCode=${code}&tableName=menu&redirect=0%23`;
+
+              // 2. 기존 active 제거
+              const allItems = document.querySelectorAll('#store-list .list-group-item-action');
+              allItems.forEach(el => el.classList.remove('active'));
+
+              // 3. 반드시 active 추가
+              setTimeout(() => {
+                item.classList.add('active');
+              }, 0);
+            });
+
+            if (!firstLoaded) {
+              item.classList.add('active');
+              iframe.src = `https://order2.torder.io/v/1/0/4/?storeCode=${code}&tableName=menu&redirect=0%23`;
+              firstLoaded = true;
+            }
+
+            listEl.appendChild(item);
+          });
+
+          if (data.length === 0) {
+            const emptyItem = document.createElement('div');
+            emptyItem.className = 'text-muted text-center mt-3';
+            emptyItem.textContent = '검색 결과가 없습니다.';
+            listEl.appendChild(emptyItem);
+          }
+        })
+        .catch(err => {
+          alert("매장 정보를 불러오지 못했습니다.");
+          location.href = './login';
+          console.error(err);
+        });
+    }
+
+    // 초기 전체 데이터 불러오기
+    fetchAndRender('');
+
+    // 검색 버튼 클릭
+    searchBtn.addEventListener('click', () => {
+      fetchAndRender(searchBox.value);
+    });
+
+    // 엔터 키도 검색
+    searchBox.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        fetchAndRender(searchBox.value);
+      }
+    });
+  </script>
+</body>
+
+</html>
