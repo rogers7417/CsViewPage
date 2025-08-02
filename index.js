@@ -19,7 +19,7 @@ app.get('/cs', (req, res) => {
 app.get('/cs/auth/login', (req, res) => {
     const loginUrl = `https://login.salesforce.com/services/oauth2/authorize?response_type=code&client_id=${process.env.SF_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.SF_REDIRECT_URI)}`;
     res.redirect(loginUrl);
-  });
+});
 app.get('/cs/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
@@ -28,7 +28,61 @@ app.get('/cs/storeList', (req, res) => {
     console.log("cs/storeList 요청");
     res.sendFile(path.join(__dirname, 'index.html'));
 });
+app.get('/cs/api/accounts/:accountId', async (req, res) => {
+    const accountId = req.params.accountId;
 
+    if (!tokenCache?.access_token) {
+        return res.redirect('/cs/login');
+    }
+
+    try {
+        const soql = `SELECT Id, Name, Phone, Industry, OwnerId, CreatedDate FROM Account WHERE Id = '${accountId}'`;
+        const url = `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(soql)}`;
+        const response = await axios.get(url, {
+            headers: { Authorization: `Bearer ${tokenCache.access_token}` }
+        });
+
+        const account = response.data.records?.[0];
+        if (!account) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+
+        res.json(account);
+    } catch (err) {
+        console.error('❌ Account 조회 오류:', err.response?.data || err.message);
+        res.status(500).json({ error: 'Account 데이터 조회 실패' });
+    }
+});
+app.get('/cs/api/accounts/:accountId/quotes', async (req, res) => {
+    const accountId = req.params.accountId;
+
+    if (!tokenCache?.access_token) {
+        return res.redirect('/cs/login');
+    }
+
+    try {
+        const soql = `SELECT Id, Name, Status__c, CreatedDate FROM Quote__c WHERE Account__c = '${accountId}' ORDER BY CreatedDate DESC`;
+        const url = `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(soql)}`;
+        const allQuotes = [];
+
+        let nextUrl = url;
+        while (nextUrl) {
+            const response = await axios.get(nextUrl, {
+                headers: { Authorization: `Bearer ${tokenCache.access_token}` }
+            });
+
+            allQuotes.push(...response.data.records);
+            nextUrl = response.data.nextRecordsUrl
+                ? `${tokenCache.instance_url}${response.data.nextRecordsUrl}`
+                : null;
+        }
+
+        res.json(allQuotes);
+    } catch (err) {
+        console.error('❌ Quote 조회 오류:', err.response?.data || err.message);
+        res.status(500).json({ error: 'Quote 데이터 조회 실패' });
+    }
+});
 app.get('/cs/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.status(400).send('Missing authorization code');
@@ -63,7 +117,7 @@ app.get('/cs/api/spaces', async (req, res) => {
     }
 
     try {
-        let soql = 'SELECT Id, Name, OrderPlatformURL__c  FROM Space__c';
+        let soql = 'SELECT Account__c,Id, Name, OrderPlatformURL__c  FROM Space__c';
         if (keyword) {
             soql += ` WHERE Name LIKE '%${keyword.replace(/'/g, "\\'")}%'`;
         }

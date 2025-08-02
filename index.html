@@ -115,8 +115,8 @@
 </head>
 
 <body>
-   <!-- ✅ 오버레이 먼저 위치 -->
-   <div id="loading-overlay" style="display: none;">
+  <!-- ✅ 오버레이 먼저 위치 -->
+  <div id="loading-overlay" style="display: none;">
     <div class="spinner-border text-light" role="status" style="width: 4rem; height: 4rem;">
       <span class="visually-hidden">Loading...</span>
     </div>
@@ -143,7 +143,10 @@
       <div class="col-9 right-panel">
         <iframe id="preview-frame" src=""></iframe>
         <div id="bottom-content" class="bottom-panel">
-          <p class="text-muted text-center m-0 py-3">Contract Info...</p>
+          <div class="text-center">
+            <button id="load-info-button" class="btn btn-red mb-2">정보 불러오기</button>
+            <div id="account-info" class="mt-3 text-white small">Contract Info...</div>
+          </div>
         </div>
       </div>
     </div>
@@ -155,6 +158,8 @@
     const searchBox = document.getElementById('search-box');
     const searchBtn = document.getElementById('search-button');
     const loadingOverlay = document.getElementById('loading-overlay');
+
+    let selectedAccountId = null; // ✅ 클릭된 매장의 Account__c 저장용
 
     function fetchAndRender(keyword = '') {
       loadingOverlay.style.display = 'flex';
@@ -177,13 +182,18 @@
 
             item.addEventListener('click', () => {
               iframe.src = `https://order2.torder.io/v/1/0/4/?storeCode=${code}&tableName=menu&redirect=0%23`;
+
               document.querySelectorAll('#store-list .list-group-item-action').forEach(el => el.classList.remove('active'));
               setTimeout(() => item.classList.add('active'), 0);
+
+              selectedAccountId = store.Account__c || null; // ✅ 저장
+              document.getElementById('account-info').textContent = 'Contract Info...';
             });
 
             if (!firstLoaded) {
               item.classList.add('active');
               iframe.src = `https://order2.torder.io/v/1/0/4/?storeCode=${code}&tableName=menu&redirect=0%23`;
+              selectedAccountId = store.Account__c || null;
               firstLoaded = true;
             }
 
@@ -209,6 +219,38 @@
     searchBtn.addEventListener('click', () => fetchAndRender(searchBox.value));
     searchBox.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') fetchAndRender(searchBox.value);
+    });
+
+
+    document.getElementById('load-info-button').addEventListener('click', () => {
+      const infoBox = document.getElementById('account-info');
+
+      if (!selectedAccountId) {
+        infoBox.textContent = '❗ 매장을 먼저 선택해주세요.';
+        return;
+      }
+
+      infoBox.textContent = '🔄 정보 불러오는 중...';
+
+      fetch(`/cs/api/accounts/${selectedAccountId}`)
+        .then(response => response.json())
+        .then(account => {
+          if (account.error) {
+            infoBox.textContent = `❌ 오류: ${account.error}`;
+            return;
+          }
+
+          infoBox.innerHTML = `
+        <div><strong>거래처명:</strong> ${account.Name}</div>
+        <div><strong>전화번호:</strong> ${account.Phone || '-'}</div>
+        <div><strong>업종:</strong> ${account.Industry || '-'}</div>
+        <div><strong>생성일:</strong> ${new Date(account.CreatedDate).toLocaleDateString()}</div>
+      `;
+        })
+        .catch(err => {
+          console.error(err);
+          infoBox.textContent = '❌ 불러오기 실패';
+        });
     });
   </script>
 
