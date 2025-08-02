@@ -5,25 +5,28 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
+
+// 정적 파일 서빙: /cs 경로에서 제공
+app.use('/cs', express.static(__dirname));
 app.use(cookieParser());
-app.use(express.static(__dirname));
 
 let tokenCache = null;
 
-app.get('/', (req, res) => {
-    res.redirect('/login');
+// 진입점
+app.get('/cs', (req, res) => {
+    res.redirect('/cs/login');
 });
 
-app.get('/login', (req, res) => {
+app.get('/cs/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 app.get('/cs/storeList', (req, res) => {
-    console.log("cs/storeList 요청")
+    console.log("cs/storeList 요청");
     res.sendFile(path.join(__dirname, 'index.html'));
 });
-// 🔁 콜백에서 토큰 요청 → 쿠키 저장
-app.get('/callback', async (req, res) => {
+
+app.get('/cs/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.status(400).send('Missing authorization code');
 
@@ -40,13 +43,8 @@ app.get('/callback', async (req, res) => {
 
         const { access_token, instance_url } = tokenRes.data;
 
-        // 👉 메모리에 저장 (또는 req.cookies에 저장해도 됨)
         tokenCache = { access_token, instance_url };
-
-        // 🍪 브라우저에도 저장 (선택)
         res.cookie('sf_logged_in', '1', { maxAge: 3600000 });
-
-        // 💨 홈 또는 매장 목록으로 이동
         res.redirect('/cs/storeList');
     } catch (err) {
         console.error('토큰 오류:', err.response?.data || err.message);
@@ -54,33 +52,26 @@ app.get('/callback', async (req, res) => {
     }
 });
 
-// 🚀 매장 정보 API
 app.get('/cs/api/spaces', async (req, res) => {
     const keyword = req.query.keyword?.trim().toLowerCase();
 
     if (!tokenCache?.access_token) {
-        return res.redirect('/login');
+        return res.redirect('/cs/login');
     }
 
     try {
-        // SOQL 구성
         let soql = 'SELECT Id, Name, OrderPlatformURL__c , IsActive__c FROM Space__c';
         if (keyword) {
-            // Salesforce는 LIKE 연산 시 % 사용
             soql += ` WHERE Name LIKE '%${keyword.replace(/'/g, "\\'")}%'`;
         }
 
-        // 반복해서 모든 레코드 수집 (pagination 처리)
         const allRecords = [];
         let nextUrl = `/services/data/v58.0/query?q=${encodeURIComponent(soql)}`;
 
         while (nextUrl) {
             const response = await axios.get(`${tokenCache.instance_url}${nextUrl}`, {
-                headers: {
-                    Authorization: `Bearer ${tokenCache.access_token}`
-                }
+                headers: { Authorization: `Bearer ${tokenCache.access_token}` }
             });
-
             allRecords.push(...response.data.records);
             nextUrl = response.data.nextRecordsUrl || null;
         }
