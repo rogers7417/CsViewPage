@@ -19,6 +19,7 @@ app.get('/login', (req, res) => {
 });
 
 app.get('/cs/storeList', (req, res) => {
+    console.log("cs/storeList 요청")
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 // 🔁 콜백에서 토큰 요청 → 쿠키 저장
