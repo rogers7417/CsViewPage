@@ -237,21 +237,30 @@
         .then(data => {
           const { account, contracts } = data;
           infoBox.innerHTML = `
-  <p><strong>거래처:</strong> ${account.Name}</p>
-  <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
-  <p><strong>업종:</strong> ${account.Industry || '-'}</p>
-  <hr />
-  <h6>계약 목록</h6>
-  <ul class="list-unstyled">
-    ${contracts.map(c => `
-      <li class="mb-2">
-        <strong>${c.Name}</strong><br />
-        상태: ${c.Status || '-'}<br />
-        시작일: ${c.ContractDateStart__c || '-'}<br />
-        종료일: ${c.ContractDateEnd__c || '-'}
-      </li>
-    `).join('')}
-  </ul>
+  <div class="row">
+    <!-- 왼쪽: 거래처 정보 -->
+    <div class="col-md-6 mb-3">
+      <h6>거래처 정보</h6>
+      <p><strong>이름:</strong> ${account.Name}</p>
+      <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
+      <p><strong>사업자 번호:</strong> ${account.CompanyRegistrationNumber__c || '-'}</p>
+    </div>
+
+    <!-- 오른쪽: 계약 목록 -->
+    <div class="col-md-6 mb-3">
+      <h6>계약 목록</h6>
+      <ul class="list-unstyled">
+        ${contracts.map(c => `
+          <li class="mb-2">
+            <strong>${c.Name}</strong><br />
+            상태: ${c.ContractStatus__c || '-'}<br />
+            시작일: ${c.ContractDateStart__c || '-'}<br />
+            종료일: ${c.ContractDateEnd__c || '-'}
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  </div>
 `;
         })
         .catch(err => {
