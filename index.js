@@ -65,25 +65,31 @@ app.get('/cs/api/accounts/:accountId/summary', async (req, res) => {
         Authorization: `Bearer ${tokenCache.access_token}`
       };
   
-      // Account 기본 정보
-      const accountSOQL = `SELECT Id, Name, Phone, Industry, CreatedDate FROM Account WHERE Id = '${accountId}'`;
+      // 1. Account 정보 조회
+      const accountSOQL = `SELECT Id, Name FROM Account WHERE Id = '${accountId}'`;
       const accountRes = await axios.get(
         `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(accountSOQL)}`,
         { headers }
       );
       const account = accountRes.data.records[0];
   
-      // 최근 계약서 정보 예시 (Contract__c 또는 Quote__c, Opportunity 등)
-      const contractSOQL = `SELECT Id, Name, Status, StartDate__c, EndDate__c FROM Contract__c WHERE Account__c = '${accountId}' ORDER BY CreatedDate DESC LIMIT 1`;
+      // 2. 계약 정보 여러 개 조회 (예: Contract__c 사용 시)
+      const contractSOQL = `
+        SELECT Id, Name, Status__c, StartDate__c, EndDate__c 
+        FROM Contract__c 
+        WHERE Account__c = '${accountId}' 
+        ORDER BY CreatedDate DESC
+      `;
       const contractRes = await axios.get(
         `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(contractSOQL)}`,
         { headers }
       );
-      const latestContract = contractRes.data.records[0] || null;
+      const contracts = contractRes.data.records;
   
+      // 3. 응답
       res.json({
         account,
-        latestContract
+        contracts
       });
     } catch (err) {
       console.error('❌ Account summary 오류:', err.response?.data || err.message);
