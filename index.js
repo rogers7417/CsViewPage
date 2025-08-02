@@ -18,7 +18,7 @@ app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
-app.get('/storeList', (req, res) => {
+app.get('/cs/storeList', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 // 🔁 콜백에서 토큰 요청 → 쿠키 저장
@@ -54,7 +54,7 @@ app.get('/callback', async (req, res) => {
 });
 
 // 🚀 매장 정보 API
-app.get('/api/spaces', async (req, res) => {
+app.get('/cs/api/spaces', async (req, res) => {
     const keyword = req.query.keyword?.trim().toLowerCase();
 
     if (!tokenCache?.access_token) {
