@@ -53,36 +53,43 @@ app.get('/cs/api/accounts/:accountId', async (req, res) => {
         res.status(500).json({ error: 'Account 데이터 조회 실패' });
     }
 });
-app.get('/cs/api/accounts/:accountId/quotes', async (req, res) => {
+app.get('/cs/api/accounts/:accountId/summary', async (req, res) => {
     const accountId = req.params.accountId;
-
+  
     if (!tokenCache?.access_token) {
-        return res.redirect('/cs/login');
+      return res.redirect('/cs/login');
     }
-
+  
     try {
-        const soql = `SELECT Id, Name, Status__c, CreatedDate FROM Quote__c WHERE Account__c = '${accountId}' ORDER BY CreatedDate DESC`;
-        const url = `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(soql)}`;
-        const allQuotes = [];
-
-        let nextUrl = url;
-        while (nextUrl) {
-            const response = await axios.get(nextUrl, {
-                headers: { Authorization: `Bearer ${tokenCache.access_token}` }
-            });
-
-            allQuotes.push(...response.data.records);
-            nextUrl = response.data.nextRecordsUrl
-                ? `${tokenCache.instance_url}${response.data.nextRecordsUrl}`
-                : null;
-        }
-
-        res.json(allQuotes);
+      const headers = {
+        Authorization: `Bearer ${tokenCache.access_token}`
+      };
+  
+      // Account 기본 정보
+      const accountSOQL = `SELECT Id, Name, Phone, Industry, CreatedDate FROM Account WHERE Id = '${accountId}'`;
+      const accountRes = await axios.get(
+        `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(accountSOQL)}`,
+        { headers }
+      );
+      const account = accountRes.data.records[0];
+  
+      // 최근 계약서 정보 예시 (Contract__c 또는 Quote__c, Opportunity 등)
+      const contractSOQL = `SELECT Id, Name, Status, StartDate__c, EndDate__c FROM Contract__c WHERE Account__c = '${accountId}' ORDER BY CreatedDate DESC LIMIT 1`;
+      const contractRes = await axios.get(
+        `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(contractSOQL)}`,
+        { headers }
+      );
+      const latestContract = contractRes.data.records[0] || null;
+  
+      res.json({
+        account,
+        latestContract
+      });
     } catch (err) {
-        console.error('❌ Quote 조회 오류:', err.response?.data || err.message);
-        res.status(500).json({ error: 'Quote 데이터 조회 실패' });
+      console.error('❌ Account summary 오류:', err.response?.data || err.message);
+      res.status(500).json({ error: 'Account 요약 조회 실패' });
     }
-});
+  });
 app.get('/cs/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.status(400).send('Missing authorization code');

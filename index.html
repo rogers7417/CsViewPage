@@ -41,7 +41,7 @@
       background-color: #2a2a2a;
       border-top: 1px solid #333;
       padding: 1rem;
-      height: 150px;
+      height: auto;
       overflow-y: auto;
     }
 
@@ -232,24 +232,28 @@
 
       infoBox.textContent = '🔄 정보 불러오는 중...';
 
-      fetch(`/cs/api/accounts/${selectedAccountId}`)
-        .then(response => response.json())
-        .then(account => {
-          if (account.error) {
-            infoBox.textContent = `❌ 오류: ${account.error}`;
-            return;
-          }
-
-          infoBox.innerHTML = `
-        <div><strong>거래처명:</strong> ${account.Name}</div>
-        <div><strong>전화번호:</strong> ${account.Phone || '-'}</div>
-        <div><strong>업종:</strong> ${account.Industry || '-'}</div>
-        <div><strong>생성일:</strong> ${new Date(account.CreatedDate).toLocaleDateString()}</div>
+      fetch(`/cs/api/accounts/${selectedAccountId}/summary`)
+        .then(res => res.json())
+        .then(data => {
+          const { account, latestContract } = data;
+          document.getElementById('bottom-content').innerHTML = `
+        <div class="text-white">
+          <p><strong>거래처:</strong> ${account.Name}</p>
+          <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
+          <p><strong>업종:</strong> ${account.Industry || '-'}</p>
+          <hr />
+          ${latestContract ? `
+            <p><strong>최근 계약:</strong> ${latestContract.Name}</p>
+            <p><strong>상태:</strong> ${latestContract.Status}</p>
+            <p><strong>시작일:</strong> ${latestContract.StartDate__c}</p>
+            <p><strong>종료일:</strong> ${latestContract.EndDate__c}</p>
+          ` : `<p class="text-muted">계약 정보 없음</p>`}
+        </div>
       `;
         })
         .catch(err => {
-          console.error(err);
-          infoBox.textContent = '❌ 불러오기 실패';
+          infoBox.textContent = '❌ 정보를 불러오는 데 실패했습니다.';
+          console.error('불러오기 실패:', err);
         });
     });
   </script>
