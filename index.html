@@ -235,7 +235,7 @@
       fetch(`/cs/api/accounts/${selectedAccountId}/summary`)
         .then(res => res.json())
         .then(data => {
-          const { account, latestContract } = data;
+          const { account, contracts } = data;
           infoBox.innerHTML = `
   <p><strong>거래처:</strong> ${account.Name}</p>
   <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
