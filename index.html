@@ -110,13 +110,13 @@
             item.className = 'list-group-item list-group-item-action';
             item.textContent = store.Name;
 
-            if (store.IsActive__c === false) {
-              // 비활성 매장 스타일 변경
-              item.classList.add('disabled'); // Bootstrap 기본 회색 스타일
-              item.textContent += ' (비활성)';
-              item.style.opacity = '0.6';
-              item.style.pointerEvents = 'none'; // 클릭 막으려면 추가
-            }
+            // if (store.IsActive__c === false) {
+            //   // 비활성 매장 스타일 변경
+            //   item.classList.add('disabled'); // Bootstrap 기본 회색 스타일
+            //   item.textContent += ' (비활성)';
+            //   item.style.opacity = '0.6';
+            //   item.style.pointerEvents = 'none'; // 클릭 막으려면 추가
+            // }
 
             item.addEventListener('click', () => {
               // 1. iframe src 변경

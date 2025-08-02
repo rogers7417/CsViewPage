@@ -60,7 +60,7 @@ app.get('/cs/api/spaces', async (req, res) => {
     }
 
     try {
-        let soql = 'SELECT Id, Name, OrderPlatformURL__c , IsActive__c FROM Space__c';
+        let soql = 'SELECT Id, Name, OrderPlatformURL__c  FROM Space__c';
         if (keyword) {
             soql += ` WHERE Name LIKE '%${keyword.replace(/'/g, "\\'")}%'`;
         }
