@@ -75,7 +75,7 @@ app.get('/cs/api/accounts/:accountId/summary', async (req, res) => {
   
       // 2. 계약 정보 여러 개 조회 (예: Contract__c 사용 시)
       const contractSOQL = `
-        SELECT Id, Name, Status__c, StartDate__c, EndDate__c 
+        SELECT Id, Name, ContractDateStart__c, ContractDateEnd__c 
         FROM Contract__c 
         WHERE Account__c = '${accountId}' 
         ORDER BY CreatedDate DESC
