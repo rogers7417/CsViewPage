@@ -55,47 +55,56 @@ app.get('/cs/api/accounts/:accountId', async (req, res) => {
 });
 app.get('/cs/api/accounts/:accountId/summary', async (req, res) => {
     const accountId = req.params.accountId;
-  
+
     if (!tokenCache?.access_token) {
-      return res.redirect('/cs/login');
+        return res.redirect('/cs/login');
     }
-  
+
     try {
-      const headers = {
-        Authorization: `Bearer ${tokenCache.access_token}`
-      };
-  
-      // 1. Account 정보 조회
-      const accountSOQL = `SELECT Id, Name FROM Account WHERE Id = '${accountId}'`;
-      const accountRes = await axios.get(
-        `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(accountSOQL)}`,
-        { headers }
-      );
-      const account = accountRes.data.records[0];
-  
-      // 2. 계약 정보 여러 개 조회 (예: Contract__c 사용 시)
-      const contractSOQL = `
-        SELECT Id, Name, ContractDateStart__c, ContractDateEnd__c 
+        const headers = {
+            Authorization: `Bearer ${tokenCache.access_token}`
+        };
+
+        // ✅ describe 메타데이터로 필드 목록 가져오는 함수
+        async function getAllFields(objectName) {
+            const url = `${tokenCache.instance_url}/services/data/v58.0/sobjects/${objectName}/describe`;
+            const res = await axios.get(url, { headers });
+            return res.data.fields.map(f => f.name);
+        }
+
+        // 1. Account 모든 필드 조회
+        const accountFields = await getAllFields('Account');
+        const accountSOQL = `SELECT ${accountFields.join(',')} FROM Account WHERE Id = '${accountId}'`;
+        const accountRes = await axios.get(
+            `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(accountSOQL)}`,
+            { headers }
+        );
+        const account = accountRes.data.records[0];
+
+        // 2. Contract__c 모든 필드 조회
+        const contractFields = await getAllFields('Contract__c');
+        const contractSOQL = `
+        SELECT ${contractFields.join(',')} 
         FROM Contract__c 
         WHERE Account__c = '${accountId}' 
         ORDER BY CreatedDate DESC
       `;
-      const contractRes = await axios.get(
-        `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(contractSOQL)}`,
-        { headers }
-      );
-      const contracts = contractRes.data.records;
-  
-      // 3. 응답
-      res.json({
-        account,
-        contracts
-      });
+        const contractRes = await axios.get(
+            `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(contractSOQL)}`,
+            { headers }
+        );
+        const contracts = contractRes.data.records;
+
+        // 3. 응답
+        res.json({
+            account,
+            contracts
+        });
     } catch (err) {
-      console.error('❌ Account summary 오류:', err.response?.data || err.message);
-      res.status(500).json({ error: 'Account 요약 조회 실패' });
+        console.error('❌ Account summary 오류:', err.response?.data || err.message);
+        res.status(500).json({ error: 'Account 요약 조회 실패' });
     }
-  });
+});
 app.get('/cs/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.status(400).send('Missing authorization code');
