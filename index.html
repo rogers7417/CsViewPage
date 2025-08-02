@@ -237,17 +237,22 @@
         .then(data => {
           const { account, latestContract } = data;
           infoBox.innerHTML = `
-        <p><strong>거래처:</strong> ${account.Name}</p>
-        <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
-        <p><strong>업종:</strong> ${account.Industry || '-'}</p>
-        <hr />
-        ${latestContract ? `
-          <p><strong>최근 계약:</strong> ${latestContract.Name}</p>
-          <p><strong>상태:</strong> ${latestContract.Status}</p>
-          <p><strong>시작일:</strong> ${latestContract.StartDate__c}</p>
-          <p><strong>종료일:</strong> ${latestContract.EndDate__c}</p>
-        ` : `<p class="text-muted">계약 정보 없음</p>`}
-      `;
+  <p><strong>거래처:</strong> ${account.Name}</p>
+  <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
+  <p><strong>업종:</strong> ${account.Industry || '-'}</p>
+  <hr />
+  <h6>계약 목록</h6>
+  <ul class="list-unstyled">
+    ${contracts.map(c => `
+      <li class="mb-2">
+        <strong>${c.Name}</strong><br />
+        상태: ${c.Status || '-'}<br />
+        시작일: ${c.ContractDateStart__c || '-'}<br />
+        종료일: ${c.ContractDateEnd__c || '-'}
+      </li>
+    `).join('')}
+  </ul>
+`;
         })
         .catch(err => {
           infoBox.textContent = '❌ 정보를 불러오는 데 실패했습니다.';
