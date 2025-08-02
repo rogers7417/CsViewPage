@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html lang="ko">
-
 <head>
   <meta charset="UTF-8">
   <title>매장 검색</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body,
-    html {
+    body, html {
       height: 100%;
       margin: 0;
+      background-color: #121212;
+      color: #f1f1f1;
     }
 
     .container-fluid {
@@ -18,14 +18,15 @@
 
     .left-panel {
       height: 100%;
-      border-right: 1px solid #ddd;
+      border-right: 1px solid #333;
       display: flex;
       flex-direction: column;
+      background-color: #1e1e1e;
     }
 
     .search-area {
       padding: 1rem;
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid #333;
     }
 
     .store-list-wrapper {
@@ -35,11 +36,10 @@
     }
 
     .bottom-panel {
-      background-color: #f8f9fa;
-      border-top: 1px solid #ddd;
+      background-color: #2a2a2a;
+      border-top: 1px solid #333;
       padding: 1rem;
       height: 150px;
-      /* 필요 시 더 키워도 됩니다 */
       overflow-y: auto;
     }
 
@@ -47,6 +47,7 @@
       display: flex;
       flex-direction: column;
       height: 100%;
+      background-color: #1e1e1e;
     }
 
     iframe {
@@ -55,20 +56,56 @@
       aspect-ratio: 3 / 2;
       border: none;
       display: block;
+      background-color: #000;
+    }
+
+    .list-group-item {
+      background-color: #2c2c2c;
+      color: #f1f1f1;
+      border: 1px solid #444;
+    }
+
+    .list-group-item:hover {
+      background-color: #3c3c3c;
+    }
+
+    .list-group-item.active {
+      background-color: #dc3545;
+      border-color: #dc3545;
+      color: white;
+    }
+
+    .btn-red {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+    }
+
+    .btn-red:hover {
+      background-color: #bb2d3b;
+    }
+
+    input.form-control {
+      background-color: #2a2a2a;
+      color: #f1f1f1;
+      border: 1px solid #555;
+    }
+
+    input.form-control::placeholder {
+      color: #999;
     }
   </style>
 </head>
-
 <body>
   <div class="container-fluid">
     <div class="row h-100">
       <!-- 왼쪽 패널 -->
       <div class="col-3 left-panel">
         <div class="search-area">
-          <h5 class="mb-3">검색 해봥</h5>
+          <h5 class="mb-3">검색</h5>
           <div class="input-group">
             <input type="text" id="search-box" class="form-control" placeholder="매장명 입력" />
-            <button id="search-button" class="btn btn-primary">검색</button>
+            <button id="search-button" class="btn btn-red">검색</button>
           </div>
         </div>
         <div class="store-list-wrapper">
@@ -80,11 +117,9 @@
       <div class="col-9 right-panel">
         <iframe id="preview-frame" src=""></iframe>
         <div id="bottom-content" class="bottom-panel">
-          <!-- 여기에 원하는 콘텐츠 추가 가능 -->
-          <p class="text-muted text-center m-0 py-3"> Contract Info...</p>
+          <p class="text-muted text-center m-0 py-3">Contract Info...</p>
         </div>
       </div>
-
     </div>
   </div>
 
@@ -110,26 +145,10 @@
             item.className = 'list-group-item list-group-item-action';
             item.textContent = store.Name;
 
-            // if (store.IsActive__c === false) {
-            //   // 비활성 매장 스타일 변경
-            //   item.classList.add('disabled'); // Bootstrap 기본 회색 스타일
-            //   item.textContent += ' (비활성)';
-            //   item.style.opacity = '0.6';
-            //   item.style.pointerEvents = 'none'; // 클릭 막으려면 추가
-            // }
-
             item.addEventListener('click', () => {
-              // 1. iframe src 변경
               iframe.src = `https://order2.torder.io/v/1/0/4/?storeCode=${code}&tableName=menu&redirect=0%23`;
-
-              // 2. 기존 active 제거
-              const allItems = document.querySelectorAll('#store-list .list-group-item-action');
-              allItems.forEach(el => el.classList.remove('active'));
-
-              // 3. 반드시 active 추가
-              setTimeout(() => {
-                item.classList.add('active');
-              }, 0);
+              document.querySelectorAll('#store-list .list-group-item-action').forEach(el => el.classList.remove('active'));
+              setTimeout(() => item.classList.add('active'), 0);
             });
 
             if (!firstLoaded) {
@@ -155,21 +174,11 @@
         });
     }
 
-    // 초기 전체 데이터 불러오기
     fetchAndRender('');
-
-    // 검색 버튼 클릭
-    searchBtn.addEventListener('click', () => {
-      fetchAndRender(searchBox.value);
-    });
-
-    // 엔터 키도 검색
+    searchBtn.addEventListener('click', () => fetchAndRender(searchBox.value));
     searchBox.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        fetchAndRender(searchBox.value);
-      }
+      if (e.key === 'Enter') fetchAndRender(searchBox.value);
     });
   </script>
 </body>
-
 </html>
