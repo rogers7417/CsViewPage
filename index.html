@@ -236,19 +236,17 @@
         .then(res => res.json())
         .then(data => {
           const { account, latestContract } = data;
-          document.getElementById('bottom-content').innerHTML = `
-        <div class="text-white">
-          <p><strong>거래처:</strong> ${account.Name}</p>
-          <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
-          <p><strong>업종:</strong> ${account.Industry || '-'}</p>
-          <hr />
-          ${latestContract ? `
-            <p><strong>최근 계약:</strong> ${latestContract.Name}</p>
-            <p><strong>상태:</strong> ${latestContract.Status}</p>
-            <p><strong>시작일:</strong> ${latestContract.StartDate__c}</p>
-            <p><strong>종료일:</strong> ${latestContract.EndDate__c}</p>
-          ` : `<p class="text-muted">계약 정보 없음</p>`}
-        </div>
+          infoBox.innerHTML = `
+        <p><strong>거래처:</strong> ${account.Name}</p>
+        <p><strong>전화번호:</strong> ${account.Phone || '-'}</p>
+        <p><strong>업종:</strong> ${account.Industry || '-'}</p>
+        <hr />
+        ${latestContract ? `
+          <p><strong>최근 계약:</strong> ${latestContract.Name}</p>
+          <p><strong>상태:</strong> ${latestContract.Status}</p>
+          <p><strong>시작일:</strong> ${latestContract.StartDate__c}</p>
+          <p><strong>종료일:</strong> ${latestContract.EndDate__c}</p>
+        ` : `<p class="text-muted">계약 정보 없음</p>`}
       `;
         })
         .catch(err => {
