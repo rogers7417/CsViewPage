@@ -16,7 +16,7 @@ let tokenCache = null;
 app.get('/cs', (req, res) => {
     res.redirect('/cs/login');
 });
-app.get('/auth/login', (req, res) => {
+app.get('/cs/auth/login', (req, res) => {
     const loginUrl = `https://login.salesforce.com/services/oauth2/authorize?response_type=code&client_id=${process.env.SF_CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.SF_REDIRECT_URI)}`;
     res.redirect(loginUrl);
   });
