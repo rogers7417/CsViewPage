@@ -46,7 +46,7 @@ app.get('/callback', async (req, res) => {
         res.cookie('sf_logged_in', '1', { maxAge: 3600000 });
 
         // 💨 홈 또는 매장 목록으로 이동
-        res.redirect('/storeList');
+        res.redirect('/cs/storeList');
     } catch (err) {
         console.error('토큰 오류:', err.response?.data || err.message);
         res.status(500).send('토큰 요청 실패');

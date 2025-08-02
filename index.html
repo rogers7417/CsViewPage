@@ -95,7 +95,7 @@
     const searchBtn = document.getElementById('search-button');
 
     function fetchAndRender(keyword = '') {
-      fetch(`/api/spaces?keyword=${encodeURIComponent(keyword)}`)
+      fetch(`/cs/api/spaces?keyword=${encodeURIComponent(keyword)}`)
         .then(response => response.json())
         .then(data => {
           listEl.innerHTML = '';
