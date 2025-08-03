@@ -250,20 +250,19 @@
     </div>
 
     <!-- 오른쪽: 계약 목록 -->
-    <div class="col-md-6 mb-3">
-      <h6>계약 목록</h6>
-      <ul class="list-unstyled">
-        ${contracts.map(c => `
-          <li class="mb-2">
-            <strong>${c.Name}</strong><br />
-            상태: ${c.ContractStatus__c || '-'}<br />
-            유형: ${c.ContractType__c || '-'}<br />
-            시작일: ${c.ContractDateStart__c || '-'}<br />
-            종료일: ${c.ContractDateEnd__c || '-'}
-          </li>
-        `).join('')}
-      </ul>
-    </div>
+  <div class="col-md-6 mb-3">
+  <h6>계약 목록</h6>
+  <div class="list-group">
+    ${contracts.map(c => `
+      <div class="list-group-item list-group-item-action bg-dark text-white border-secondary mb-2 rounded">
+        <div>상태: ${c.ContractStatus__c || '-'}</div>
+        <div>유형: ${c.ContractType__c || '-'}</div>
+        <div>시작일: ${c.ContractDateStart__c || '-'}</div>
+        <div>종료일: ${c.ContractDateEnd__c || '-'}</div>
+      </div>
+    `).join('')}
+  </div>
+</div>
   </div>
 `;
         })
