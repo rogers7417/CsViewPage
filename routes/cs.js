@@ -9,6 +9,7 @@ router.get('/auth/login', csController.startOAuthLogin);
 router.get('/login', csController.renderLoginPage);
 router.get('/storeList', csController.renderStoreList);
 router.get('/lead', leadController.renderLeadPage);
+router.get('/lead/daily', leadController.renderLeadDailyPage);
 router.get('/api/leads/daily-by-owner', leadController.getDailyByOwner);
 router.get('/api/leads/count-by-owner', leadController.getCountByOwner);
 router.get('/api/accounts/:accountId', csController.getAccount);

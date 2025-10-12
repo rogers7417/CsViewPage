@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Lead Count — 일자별(1~31) 컬럼</title>
+
+  <!-- jQuery UI theme + jqGrid CSS -->
+  <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.14/themes/redmond/jquery-ui.css" type="text/css" />
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/jqgrid/4.6.0/css/ui.jqgrid.css" type="text/css" />
+
+  <style>
+    html, body { height: 100%; }
+    body { font-family: Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif; margin: 20px; }
+    .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .toolbar label { font-size: 14px; color: #333; }
+    .toolbar input[type="month"], .toolbar select { padding: 6px 8px; }
+    .toolbar button { padding: 6px 10px; cursor: pointer; }
+    #title { margin-left:auto; font-weight:600; }
+    .ui-jqgrid .ui-jqgrid-htable th { white-space:nowrap; }
+    .ui-jqgrid-btable td { white-space:nowrap; }
+    tr.jqgrow.footer-row td { background:#fff8b3 !important; font-weight:700 !important; }
+    .right { text-align:right; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label for="month">월 선택:</label>
+    <input type="month" id="month" />
+    <label for="ownerDept">부서:</label>
+    <select id="ownerDept">
+      <option value="아웃바운드세일즈">아웃바운드세일즈</option>
+      <option value="인바운드세일즈">인바운드세일즈</option>
+      <option value="채널세일즈팀">채널세일즈팀</option>
+      <option value="리텐션">리텐션</option>
+    </select>
+    <button id="prevBtn">◀ 이전달</button>
+    <button id="nextBtn">다음달 ▶</button>
+    <button id="loadBtn">불러오기</button>
+    <span id="title"></span>
+  </div>
+
+  <table id="leadGrid"></table>
+  <div id="leadGrid-pager"></div>
+
+  <!-- jQuery / UI / jqGrid -->
+  <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.10.3/jquery-ui.min.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/i18n/grid.locale-kr.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/jquery.jqGrid.src.js"></script>
+
+  <script>
+    $.jgrid = $.jgrid || {}; $.jgrid.no_legacy_api = true; $.jgrid.useJSON = true;
+
+    var API_BASE = "/cs/api";
+
+    // utils
+    function fmt(n){ n = Number(n || 0); return isNaN(n) ? "" : n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+    function labelKorean(ym){ var a=ym.split("-"); return a[0]+"년 "+Number(a[1])+"월"; }
+    function addMonths(ym, delta){ var a=ym.split("-").map(Number), d=new Date(Date.UTC(a[0], a[1]-1, 1)); d.setUTCMonth(d.getUTCMonth()+delta); return d.toISOString().slice(0,7); }
+    function resizeGrid() {
+      var $grid = $("#leadGrid"); if ($grid.length===0) return;
+      var top = $grid.offset().top || 0, vh = $(window).height() || 0, bottom = 30;
+      $grid.jqGrid("setGridHeight", Math.max(220, vh - top - bottom));
+      var newW = $grid.closest(".ui-jqgrid").parent().width(); if (newW) $grid.jqGrid("setGridWidth", newW);
+    }
+
+    // 요청 월의 일수(1~lastDay) 구하기
+    function getLastDay(ym) {
+      var a = ym.split('-').map(Number);
+      // 다음달 0일 → 해당월 마지막 날
+      return new Date(a[0], a[1], 0).getDate(); // local month calc OK (단순 일수)
+    }
+
+    // dateKeys(['2025-09-01', ...]) → { '01':'2025-09-01', ... }
+    function mapDayToKey(dateKeys){
+      var m = {};
+      (dateKeys || []).forEach(function(k){
+        var dd = k.slice(-2); // '01'~'31'
+        m[dd] = k;
+      });
+      return m;
+    }
+
+    // 합계행(TOTAL) 재계산: day1..day31 + total
+    function recomputeFooter(lastDay){
+      var $g = $("#leadGrid");
+      var ids = $g.jqGrid('getDataIDs');
+      if (!ids.length) return;
+
+      var footer = { ownerId: "TOTAL", ownerName: "총 합계", total: 0 };
+      for (var d=1; d<=31; d++){
+        var name = 'd' + d;
+        footer[name] = 0;
+      }
+
+      for (var i=0; i<ids.length; i++){
+        var id = ids[i];
+        if (id === "TOTAL") continue;
+        var rowTotal = 0;
+        for (var d=1; d<=lastDay; d++){
+          var name = 'd' + d;
+          var v = Number(String($g.jqGrid('getCell', id, name) || '0').replace(/,/g,''));
+          footer[name] += v;
+          rowTotal += v;
+        }
+        $g.jqGrid('setCell', id, 'total', rowTotal);
+        footer.total += rowTotal;
+      }
+
+      // 합계행 삽입/갱신
+      if (ids[ids.length-1] !== "TOTAL"){
+        $g.jqGrid('addRowData', "TOTAL", footer, "last");
+      } else {
+        // 갱신
+        for (var d=1; d<=lastDay; d++){
+          $g.jqGrid('setCell', "TOTAL", 'd'+d, footer['d'+d]);
+        }
+        $g.jqGrid('setCell', "TOTAL", 'total', footer.total);
+      }
+      $("#" + $.jgrid.jqID("TOTAL")).addClass("footer-row");
+    }
+
+    // jqGrid 생성(고정 컬럼: Owner, 1~31일, Total)
+    function buildGrid(rows, lastDay){
+      if ($("#leadGrid")[0].grid) { $("#leadGrid").GridUnload(); }
+
+      var colNames = ["담당자"];
+      var colModel = [
+        { name:"ownerName", index:"ownerName", width: 150, align:"left", frozen: true }
+      ];
+
+      for (var d=1; d<=31; d++){
+        colNames.push(d + "일");
+        colModel.push({
+          name: "d"+d, index: "d"+d, width: 80, align: "right",
+          formatter: function(v){ return fmt(v); },
+          sorttype: "number"
+        });
+      }
+      colNames.push("합계");
+      colModel.push({
+        name:"total", index:"total", width: 100, align:"right",
+        formatter: function(v){ return fmt(v); },
+        sorttype: "number"
+      });
+
+      colNames.push("OwnerId");
+      colModel.push({
+        name:"ownerId", index:"ownerId", width: 120, hidden: true, key: true
+      });
+
+      $("#leadGrid").jqGrid({
+        datatype: "local",
+        data: rows,
+        colNames: colNames,
+        colModel: colModel,
+        pager: "#leadGrid-pager",
+        rowNum: 1000, rowList: [50, 200, 1000],
+        viewrecords: true,
+        autowidth: true,
+        shrinkToFit: false,
+        height: 440,
+        loadComplete: function(){
+          // 30/31일 숨기기 (요청 월의 일수만 보여줌)
+          for (var d=31; d>lastDay; d--){
+            $("#leadGrid").jqGrid('hideCol', 'd'+d);
+          }
+          recomputeFooter(lastDay);
+        }
+      });
+
+      $("#leadGrid").jqGrid('setFrozenColumns');
+
+      resizeGrid();
+    }
+
+    // API 응답을 그리드 행으로 매핑
+    function toRows(resp){
+      var owners = Array.isArray(resp.owners) ? resp.owners : [];
+      var dateKeys = Array.isArray(resp.dateKeys) ? resp.dateKeys : [];
+      var ym = $("#month").val();
+      var lastDay = getLastDay(ym);
+
+      var map = mapDayToKey(dateKeys);
+
+      // 각 owner 행 구성
+      var rows = owners.map(function(o){
+        var r = { ownerId: o.ownerId, ownerName: o.ownerName, total: 0 };
+        for (var d=1; d<=31; d++){
+          var dd = ('0' + d).slice(-2);
+          var key = map[dd];
+          var cnt = (key && o.daily && typeof o.daily[key] === 'number') ? o.daily[key] : 0;
+          r['d'+d] = cnt;
+          if (d <= lastDay) r.total += cnt;
+        }
+        return r;
+      });
+
+      // 합계행은 build 후 loadComplete에서 재계산/삽입 처리
+      return { rows, lastDay };
+    }
+
+    function loadData(){
+      var ym = $("#month").val();
+      var dept = $("#ownerDept").val();
+      $("#title").text("조회: " + labelKorean(ym) + (dept ? (" / " + dept) : ""));
+
+      var url = API_BASE + "/leads/daily-by-owner"
+              + "?month=" + encodeURIComponent(ym)
+              + "&ownerDept=" + encodeURIComponent(dept);
+
+      $.getJSON(url, function(resp){
+        var mapped = toRows(resp);
+        var rows = mapped.rows;
+        var lastDay = mapped.lastDay;
+
+        // 기존 행 + 마지막에 footer를 미리 넣고 싶다면 주석 해제 가능
+        // (우리는 loadComplete에서 자동 계산/삽입하므로 여기선 생략)
+        buildGrid(rows, lastDay);
+      }).fail(function(xhr){
+        alert("데이터 로딩 실패: " + (xhr && xhr.status));
+      });
+    }
+
+    // 초기 셋업
+    $(function(){
+      var d = new Date(); d.setDate(1);
+      var ym = d.toISOString().slice(0,7);
+      $("#month").val(ym);
+
+      $("#loadBtn").on("click", loadData);
+      $("#prevBtn").on("click", function(){ $("#month").val(addMonths($("#month").val(), -1)); loadData(); });
+      $("#nextBtn").on("click", function(){ $("#month").val(addMonths($("#month").val(), +1)); loadData(); });
+      $("#ownerDept").on("change", loadData);
+      $("#month").on("change", loadData);
+
+      loadData();
+      $(window).on("resize.jqGrid", resizeGrid);
+    });
+  </script>
+</body>
+</html>
