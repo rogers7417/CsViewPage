@@ -1,17 +1,17 @@
 const path = require('path');
 const axios = require('axios');
+const { getToken, setToken } = require('../services/salesforceSession');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const VIEW_DIR = path.join(ROOT_DIR, 'views');
 
-let tokenCache = null;
-
 function ensureTokenOrRedirect(res) {
-  if (!tokenCache?.access_token) {
+  const token = getToken();
+  if (!token?.access_token) {
     res.redirect('/cs/login');
     return false;
   }
-  return true;
+  return token;
 }
 
 exports.startOAuthLogin = (req, res) => {
@@ -29,15 +29,16 @@ exports.renderStoreList = (req, res) => {
 };
 
 exports.getAccount = async (req, res) => {
-  if (!ensureTokenOrRedirect(res)) return;
+  const token = ensureTokenOrRedirect(res);
+  if (!token) return;
 
   const accountId = req.params.accountId;
 
   try {
     const soql = `SELECT Id, Name, Phone, Industry, OwnerId, CreatedDate FROM Account WHERE Id = '${accountId}'`;
-    const url = `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(soql)}`;
+    const url = `${token.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(soql)}`;
     const response = await axios.get(url, {
-      headers: { Authorization: `Bearer ${tokenCache.access_token}` }
+      headers: { Authorization: `Bearer ${token.access_token}` }
     });
 
     const account = response.data.records?.[0];
@@ -53,17 +54,18 @@ exports.getAccount = async (req, res) => {
 };
 
 exports.getAccountSummary = async (req, res) => {
-  if (!ensureTokenOrRedirect(res)) return;
+  const token = ensureTokenOrRedirect(res);
+  if (!token) return;
 
   const accountId = req.params.accountId;
 
   try {
     const headers = {
-      Authorization: `Bearer ${tokenCache.access_token}`
+      Authorization: `Bearer ${token.access_token}`
     };
 
     async function getAllFields(objectName) {
-      const url = `${tokenCache.instance_url}/services/data/v58.0/sobjects/${objectName}/describe`;
+      const url = `${token.instance_url}/services/data/v58.0/sobjects/${objectName}/describe`;
       const describeRes = await axios.get(url, { headers });
       return describeRes.data.fields.map(f => f.name);
     }
@@ -71,7 +73,7 @@ exports.getAccountSummary = async (req, res) => {
     const accountFields = await getAllFields('Account');
     const accountSOQL = `SELECT ${accountFields.join(',')} FROM Account WHERE Id = '${accountId}'`;
     const accountRes = await axios.get(
-      `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(accountSOQL)}`,
+      `${token.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(accountSOQL)}`,
       { headers }
     );
     const account = accountRes.data.records[0];
@@ -84,7 +86,7 @@ exports.getAccountSummary = async (req, res) => {
         ORDER BY CreatedDate DESC
       `;
     const contractRes = await axios.get(
-      `${tokenCache.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(contractSOQL)}`,
+      `${token.instance_url}/services/data/v58.0/query?q=${encodeURIComponent(contractSOQL)}`,
       { headers }
     );
 
@@ -115,7 +117,7 @@ exports.handleOAuthCallback = async (req, res) => {
 
     const { access_token, instance_url } = tokenRes.data;
 
-    tokenCache = { access_token, instance_url };
+    setToken({ access_token, instance_url });
     res.cookie('sf_logged_in', '1', { maxAge: 3600000 });
     res.redirect('/cs/storeList');
   } catch (err) {
@@ -125,7 +127,8 @@ exports.handleOAuthCallback = async (req, res) => {
 };
 
 exports.getSpaces = async (req, res) => {
-  if (!ensureTokenOrRedirect(res)) return;
+  const token = ensureTokenOrRedirect(res);
+  if (!token) return;
 
   const keyword = req.query.keyword?.trim().toLowerCase();
 
@@ -139,8 +142,8 @@ exports.getSpaces = async (req, res) => {
     let nextUrl = `/services/data/v58.0/query?q=${encodeURIComponent(soql)}`;
 
     while (nextUrl) {
-      const response = await axios.get(`${tokenCache.instance_url}${nextUrl}`, {
-        headers: { Authorization: `Bearer ${tokenCache.access_token}` }
+      const response = await axios.get(`${token.instance_url}${nextUrl}`, {
+        headers: { Authorization: `Bearer ${token.access_token}` }
       });
       allRecords.push(...response.data.records);
       nextUrl = response.data.nextRecordsUrl || null;

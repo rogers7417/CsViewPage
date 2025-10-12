@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Lead Count (전환율/Qualified 편집 + 합계 마지막행)</title>
+
+  <!-- jQuery UI theme + jqGrid CSS -->
+  <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.14/themes/redmond/jquery-ui.css" type="text/css" />
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/jqgrid/4.6.0/css/ui.jqgrid.css" type="text/css" />
+
+  <style>
+    html, body { height: 100%; }
+    body { font-family: Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif; margin: 20px; }
+    .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .toolbar label { font-size: 14px; color: #333; }
+    .toolbar input[type="month"], .toolbar select { padding: 6px 8px; }
+    .toolbar button { padding: 6px 10px; cursor: pointer; }
+    #title { margin-left:auto; font-weight:600; }
+    .ui-jqgrid .ui-jqgrid-htable th { white-space:nowrap; }
+    .ui-jqgrid-btable td { white-space:nowrap; }
+    /* 마지막 합계(총 합계) 행 스타일 */
+    tr.jqgrow.footer-row td {
+      background: #fff8b3 !important;
+      font-weight: 700 !important;
+    }
+    /* 편집 input 우측 정렬 */
+    .ui-jqgrid-btable input, .ui-jqgrid-btable select { text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label for="month">월 선택:</label>
+    <input type="month" id="month" />
+    <label for="ownerDept">부서:</label>
+    <select id="ownerDept">
+      <option value="아웃바운드세일즈">아웃바운드세일즈</option>
+      <option value="인바운드세일즈">인바운드세일즈</option>
+      <option value="채널세일즈팀">채널세일즈팀</option>
+      <option value="리텐션">리텐션</option>
+    </select>
+    <button id="prevBtn">◀ 이전달</button>
+    <button id="nextBtn">다음달 ▶</button>
+    <button id="loadBtn">불러오기</button>
+    <span id="title"></span>
+  </div>
+
+  <table id="leadGrid"></table>
+  <div id="leadGrid-pager"></div>
+
+  <!-- jQuery / UI / jqGrid -->
+  <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.10.3/jquery-ui.min.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/i18n/grid.locale-kr.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/jquery.jqGrid.src.js"></script>
+
+  <script>
+    $.jgrid = $.jgrid || {}; $.jgrid.no_legacy_api = true; $.jgrid.useJSON = true;
+
+    var API_BASE = "http://localhost:4000";
+
+    // 폴백(서버 fixedStatuses 없을 때)
+    const DEFAULT_FIXED_STATUSES = ["배정대기","담당자 배정","부재중","리터치예정","고민중","장기부재","종료","Qualified"];
+
+    // 유틸
+    function fmt(n){ n = Number(n || 0); return isNaN(n) ? "" : n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+    function unfmt(s){ return Number(String(s||"").replace(/[, %]/g,"")) || 0; } // 콤마/공백/% 제거 → 숫자
+    function clamp(v, lo, hi){ return Math.min(Math.max(v, lo), hi); }
+    function labelKorean(ym){ var a=ym.split("-"); return a[0]+"년 "+Number(a[1])+"월"; }
+    function addMonths(ym, delta){ var a=ym.split("-").map(Number), d=new Date(Date.UTC(a[0], a[1]-1, 1)); d.setUTCMonth(d.getUTCMonth()+delta); return d.toISOString().slice(0,7); }
+
+    // 화면 맞춤
+    function resizeGrid() {
+      var $grid = $("#leadGrid"); if ($grid.length===0) return;
+      var top = $grid.offset().top || 0, vh = $(window).height() || 0, bottom = 30;
+      $grid.jqGrid("setGridHeight", Math.max(200, vh - top - bottom));
+      var newW = $grid.closest(".ui-jqgrid").parent().width(); if (newW) $grid.jqGrid("setGridWidth", newW);
+    }
+
+    // 합계행(TOTAL) 재계산
+    function recomputeTotalRow(fixedStatuses){
+      var $g = $("#leadGrid");
+      var ids = $g.jqGrid('getDataIDs');
+      if (!ids.length) return;
+
+      var sumByStatus = {};
+      fixedStatuses.forEach(st => sumByStatus[st] = 0);
+      var grandTotal = 0;
+
+      for (var i=0; i<ids.length; i++){
+        var id = ids[i];
+        if (id === "TOTAL") continue;
+        fixedStatuses.forEach(st => { sumByStatus[st] += unfmt($g.jqGrid('getCell', id, st)); });
+        grandTotal += unfmt($g.jqGrid('getCell', id, 'total'));
+      }
+
+      var totalQualified = sumByStatus["Qualified"] || 0;
+      var conv = grandTotal > 0 ? ((totalQualified / grandTotal)*100).toFixed(1) + "%" : "0.0%";
+
+      if (ids[ids.length-1] !== "TOTAL"){
+        var add = { ownerId:"TOTAL", ownerName:"총 합계" };
+        fixedStatuses.forEach(st => add[st] = 0);
+        add.total = 0; add.conversionRate = "0.0%";
+        $g.jqGrid('addRowData', "TOTAL", add, "last");
+      }
+
+      fixedStatuses.forEach(st => $g.jqGrid('setCell', "TOTAL", st, sumByStatus[st]));
+      $g.jqGrid('setCell', "TOTAL", 'total', grandTotal);
+      $g.jqGrid('setCell', "TOTAL", 'conversionRate', conv);
+
+      $("#" + $.jgrid.jqID("TOTAL")).addClass("footer-row");
+    }
+
+    // jqGrid 생성
+    function buildLeadGrid(rows, fixedStatuses){
+      if ($("#leadGrid")[0].grid) { $("#leadGrid").GridUnload(); }
+
+      var colNames = ["OwnerId", "Owner Name"];
+      var colModel = [
+        { name:"ownerId", index:"ownerId", width: 180, key: true },
+        { name:"ownerName", index:"ownerName", width: 120, align:"center" }
+      ];
+
+      fixedStatuses.forEach(function(st){
+        colNames.push(st);
+        colModel.push({
+          name: st, index: st, width: 110, align: "right",
+          formatter: function(v){ return fmt(v); },
+          sorttype: "number",
+          editable: (st === "Qualified") // Qualified만 직접 편집 가능
+        });
+      });
+
+      colNames.push("Total");
+      colModel.push({
+        name:"total", index:"total", width: 120, align:"right",
+        formatter: function(v){ return fmt(v); },
+        sorttype: "number",
+        editable: false // Total은 현재 읽기전용
+      });
+
+      colNames.push("전환율");
+      colModel.push({
+        name:"conversionRate", index:"conversionRate", width: 100, align:"right",
+        formatter: function(v){ return String(v || "0.0%"); },
+        sorttype: "float",
+        editable: true // 전환율 편집 가능
+      });
+
+      $("#leadGrid").jqGrid({
+        datatype: "local",
+        data: rows,
+        colNames: colNames,
+        colModel: colModel,
+        pager: "#leadGrid-pager",
+        rowNum: 1000, rowList: [20, 50, 1000],
+        viewrecords: true,
+        autowidth: true,
+        shrinkToFit: false,
+        height: 420,
+
+        // ✅ 셀 편집
+        cellEdit: true,
+        cellsubmit: 'clientArray',
+
+        // ✅ 네가 준 afterSaveCell 로직 그대로 반영
+        afterSaveCell: function(rowid, cellname, value, iRow, iCol){
+          if (rowid === "TOTAL") return; // 안전 차단
+
+          var $g = $("#leadGrid");
+          // 현재 행의 Total, Qualified, 전환율 읽기
+          var total = unfmt($g.jqGrid('getCell', rowid, 'total'));
+
+          if (cellname === 'conversionRate'){
+            // 입력값 정규화(12.3 또는 12.3%)
+            var rate = parseFloat(String(value).replace('%',''));
+            if (!isFinite(rate)) rate = 0;
+            rate = clamp(rate, 0, 100);
+
+            var qualified = Math.round(total * (rate/100));
+            $g.jqGrid('setCell', rowid, 'Qualified', qualified);
+            $g.jqGrid('setCell', rowid, 'conversionRate', rate.toFixed(1) + '%');
+          }
+
+          if (cellname === 'Qualified'){
+            var qualifiedNew = unfmt(value);
+            if (qualifiedNew < 0) qualifiedNew = 0;
+            if (qualifiedNew > total) qualifiedNew = total; // Qualified ≤ Total
+
+            // 셀 수정값 반영(포맷)
+            $g.jqGrid('setCell', rowid, 'Qualified', qualifiedNew);
+
+            // 전환율 재계산
+            var rate = total > 0 ? ((qualifiedNew/total)*100).toFixed(1) + '%' : '0.0%';
+            $g.jqGrid('setCell', rowid, 'conversionRate', rate);
+          }
+
+          // 마지막 합계행 재계산
+          recomputeTotalRow(fixedStatuses);
+        },
+
+        // 합계행 강조 유지
+        loadComplete: function(){
+          var ids = $("#leadGrid").jqGrid('getDataIDs');
+          if (ids.length && ids[ids.length-1] === "TOTAL"){
+            $("#" + $.jgrid.jqID("TOTAL")).addClass("footer-row");
+          }
+        }
+      });
+
+      resizeGrid();
+      // 초기 합계행 보정
+      recomputeTotalRow(fixedStatuses);
+    }
+
+    // API 호출 → 그리드/합계행 반영
+    function loadLeads(){
+      var ym = $("#month").val();
+      var dept = $("#ownerDept").val();
+      $("#title").text("조회: " + labelKorean(ym) + (dept ? (" / " + dept) : ""));
+
+      var url = API_BASE + "/leads/count-by-owner"
+              + "?month=" + encodeURIComponent(ym)
+              + "&ownerDept=" + encodeURIComponent(dept)
+              + "&groupBy=owner_status_fixed";
+
+      $.getJSON(url, function(resp){
+        var fixedStatuses = Array.isArray(resp.fixedStatuses) && resp.fixedStatuses.length
+          ? resp.fixedStatuses
+          : DEFAULT_FIXED_STATUSES;
+
+        var rows = Array.isArray(resp.rows) ? resp.rows.slice() : [];
+
+        // 합계행을 데이터 마지막 행으로 추가
+        if (resp.footer) {
+          var footRow = Object.assign({ ownerId: "TOTAL" }, resp.footer);
+          footRow.ownerName = resp.footer.ownerName || "총 합계";
+          fixedStatuses.forEach(function(st){ footRow[st] = Number(footRow[st] || 0); });
+          footRow.total = Number(footRow.total || 0);
+          rows.push(footRow);
+        }
+
+        // 합계행은 항상 맨 뒤
+        rows.sort(function(a,b){
+          if (a.ownerId === "TOTAL") return 1;
+          if (b.ownerId === "TOTAL") return -1;
+          return (a.ownerName||"").localeCompare(b.ownerName||"", 'ko')
+              || (a.ownerId||"").localeCompare(b.ownerId||"");
+        });
+
+        if (typeof resp.totalCount === "number") {
+          $("#title").text(function(_, t){ return t + " / 총 리드: " + resp.totalCount.toLocaleString(); });
+        }
+
+        buildLeadGrid(rows, fixedStatuses);
+      }).fail(function(xhr){
+        alert("데이터 로딩 실패: " + (xhr && xhr.status));
+      });
+    }
+
+    // 초기 셋업
+    $(function(){
+      var d = new Date(); d.setDate(1);
+      var ym = d.toISOString().slice(0,7);
+      $("#month").val(ym);
+
+      $("#loadBtn").on("click", loadLeads);
+      $("#prevBtn").on("click", function(){ $("#month").val(addMonths($("#month").val(), -1)); loadLeads(); });
+      $("#nextBtn").on("click", function(){ $("#month").val(addMonths($("#month").val(), +1)); loadLeads(); });
+      $("#ownerDept").on("change", loadLeads);
+      $("#month").on("change", loadLeads);
+
+      loadLeads();
+      $(window).on("resize.jqGrid", resizeGrid);
+    });
+  </script>
+</body>
+</html>
