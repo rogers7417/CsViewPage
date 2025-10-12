@@ -114,8 +114,8 @@ exports.getDailyByOwner = async (req, res) => {
 
     const conds = [
       `IsDeleted = FALSE`,
-      `CreatedDate >= '${START_DT}'`,
-      `CreatedDate <  '${END_DT}'`,
+      `CreatedDate >= ${START_DT}`,
+      `CreatedDate <  ${END_DT}`,
       `OwnerId IN (SELECT Id FROM User WHERE Department IN (${deptList}))`,
     ];
 
@@ -216,8 +216,8 @@ exports.getCountByOwner = async (req, res) => {
 
     const conds = [
       `IsDeleted = FALSE`,
-      `CreatedDate >= '${START_DT}'`,
-      `CreatedDate <  '${END_DT}'`,
+      `CreatedDate >= ${START_DT}`,
+      `CreatedDate <  ${END_DT}`,
       `OwnerId IN (SELECT Id FROM User WHERE Department IN (${deptList}))`,
     ];
     if (isConverted === 'true') conds.push(`IsConverted = true`);
