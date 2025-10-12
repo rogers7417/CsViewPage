@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>지도 상단 + 검색창 하단</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #map {
+      flex: 1;
+      height: 50%;
+      /* 지도 영역 비율 */
+    }
+
+    #bottom-panel {
+      height: 50%;
+      padding: 10px;
+      overflow-y: auto;
+      border-top: 1px solid #ccc;
+      background: #f9f9f9;
+    }
+
+    #search-box {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 10px;
+    }
+
+    #search-box input {
+      flex: 1;
+      padding: 8px;
+    }
+
+    .place-item {
+      margin-bottom: 8px;
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+
+    .place-item:hover {
+      background: #eee;
+    }
+  </style>
+  <script
+    src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=f26557bb4482ac94fc642717759c7e76&libraries=services"></script>
+</head>
+
+<body>
+  <!-- 지도 상단 -->
+  <div id="map"></div>
+
+  <!-- 검색창 + 결과 리스트 하단 -->
+  <div id="bottom-panel">
+    <div id="search-box">
+      <input type="text" id="keyword" placeholder="예: 술집, 포차, 호프" />
+      <button onclick="searchByKeyword()">검색</button>
+    </div>
+    <div id="results"></div>
+  </div>
+
+  <script>
+    let map;
+    let markers = [];
+    let placesService;
+    let currentKeyword = '';
+
+    function initMap(lat, lng) {
+      const container = document.getElementById('map');
+      const options = {
+        center: new kakao.maps.LatLng(lat, lng),
+        level: 2
+      };
+
+      map = new kakao.maps.Map(container, options);
+      placesService = new kakao.maps.services.Places();
+
+      // 확대/축소 버튼
+      map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+
+      new kakao.maps.Marker({
+        map,
+        position: new kakao.maps.LatLng(lat, lng)
+      });
+
+      kakao.maps.event.addListener(map, 'dragend', () => {
+        if (currentKeyword) {
+          searchByKeyword(currentKeyword);
+        }
+      });
+    }
+
+    function searchByKeyword(overrideKeyword) {
+      const keywordInput = document.getElementById('keyword');
+      const keyword = overrideKeyword || keywordInput.value.trim();
+
+      if (!keyword) {
+        alert('검색어를 입력하세요!');
+        return;
+      }
+
+      currentKeyword = keyword;
+      const center = map.getCenter();
+
+      placesService.keywordSearch(
+        keyword,
+        (data, status) => {
+          const results = document.getElementById('results');
+          results.innerHTML = '';
+          clearMarkers();
+
+          if (status === kakao.maps.services.Status.OK && data.length > 0) {
+            data.forEach(place => {
+              const latlng = new kakao.maps.LatLng(place.y, place.x);
+
+              const marker = new kakao.maps.Marker({
+                map: map,
+                position: latlng
+              });
+              markers.push(marker);
+
+              const div = document.createElement('div');
+              div.className = 'place-item';
+              div.innerHTML = `<strong>${place.place_name}</strong><br/><small>${place.address_name}</small>`;
+              div.onclick = () => {
+                map.setCenter(latlng);
+                showInfoWindow(marker, place.place_name);
+              };
+              results.appendChild(div);
+            });
+
+            // ✅ 그냥 줌 레벨만 고정
+            map.setLevel(2);
+          } else {
+            results.innerHTML = '<p>검색 결과가 없습니다.</p>';
+          }
+        },
+        {
+          bounds: map.getBounds() // ✅ location 대신 안전하게 bounds 사용
+        }
+      );
+    }
+
+    function clearMarkers() {
+      markers.forEach(marker => marker.setMap(null));
+      markers = [];
+    }
+
+    function showInfoWindow(marker, title) {
+      const infowindow = new kakao.maps.InfoWindow({
+        content: `<div style="padding:5px;font-size:14px;">${title}</div>`
+      });
+      infowindow.open(map, marker);
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        initMap(pos.coords.latitude, pos.coords.longitude);
+      },
+      () => {
+        alert('위치 정보를 가져올 수 없습니다.');
+      }
+    );
+  </script>
+</body>
+
+</html>
