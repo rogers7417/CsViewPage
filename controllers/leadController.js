@@ -14,6 +14,15 @@ function ensureTokenOrJson(res) {
   return token;
 }
 
+function ensureTokenOrRedirect(res) {
+  const token = getToken();
+  if (!token?.access_token) {
+    res.redirect('/cs/login');
+    return null;
+  }
+  return token;
+}
+
 async function queryAll(instanceUrl, accessToken, soql) {
   const headers = { Authorization: `Bearer ${accessToken}` };
   let url = `${instanceUrl}/services/data/${API_VERSION}/query?q=${encodeURIComponent(soql)}`;
@@ -78,10 +87,12 @@ function normalizeStatusLabel(label) {
 }
 
 exports.renderLeadPage = (req, res) => {
+  if (!ensureTokenOrRedirect(res)) return;
   res.sendFile(path.join(VIEW_DIR, 'lead.html'));
 };
 
 exports.renderLeadDailyPage = (req, res) => {
+  if (!ensureTokenOrRedirect(res)) return;
   res.sendFile(path.join(VIEW_DIR, 'leadByDaily.html'));
 };
 
