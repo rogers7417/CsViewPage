@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Lead Count (전환율/Qualified 편집 + 합계 마지막행)</title>
+
+  <!-- Third-party styles -->
+  <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.14/themes/redmond/jquery-ui.css" type="text/css" />
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/jqgrid/4.6.0/css/ui.jqgrid.css" type="text/css" />
+
+  <!-- Shared styles -->
+  <link rel="stylesheet" href="/cs/static/assets/common.css" type="text/css" />
+
+  <style>
+    tr.jqgrow.footer-row td {
+      background: #fff8b3 !important;
+      font-weight: 700 !important;
+    }
+    .ui-jqgrid-btable input,
+    .ui-jqgrid-btable select {
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="sidebar__title">Salesforce 리포트</h1>
+      <p class="sidebar__subtitle">Lead 분석 대시보드</p>
+      <nav class="sidebar__nav">
+        <a href="/cs/lead/dashboard">월간 리드 현황</a>
+        <a href="/cs/lead/dashboard/daily">일자별 리드</a>
+        <!-- <a href="/cs/lead/dashboard/map">리드 지도</a> -->
+        <!-- <a href="/cs/lead/dashboard/owners">오너별 기회</a> -->
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="page-header">
+        <h2 class="page-header__title">리드 현황 (상태별)</h2>
+        <p class="page-header__desc">부서와 조회 월을 지정해 담당자별 상태와 전환율을 한눈에 확인하세요.</p>
+      </div>
+
+      <div class="toolbar">
+        <label for="month">월 선택:</label>
+        <input type="month" id="month" />
+        <label for="ownerDept">부서:</label>
+        <select id="ownerDept">
+          <option value="아웃바운드세일즈">아웃바운드세일즈</option>
+          <option value="인바운드세일즈">인바운드세일즈</option>
+          <option value="채널세일즈팀">채널세일즈팀</option>
+          <option value="리텐션">리텐션</option>
+        </select>
+        <button id="prevBtn">◀ 이전달</button>
+        <button id="nextBtn">다음달 ▶</button>
+        <button id="loadBtn">불러오기</button>
+        <span id="title"></span>
+      </div>
+
+      <table id="leadGrid"></table>
+      <div id="leadGrid-pager"></div>
+    </main>
+  </div>
+
+  <!-- Third-party scripts -->
+  <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.10.3/jquery-ui.min.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/i18n/grid.locale-kr.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/jquery.jqGrid.src.js"></script>
+  <script src="/cs/static/shared/cs-common.js"></script>
+
+  <!-- Shared helpers -->
+  <script src="/cs/static/assets/gridCommon.js"></script>
+
+  <script>
+    (function () {
+      var GC = window.gridCommon || {};
+      var API_BASE = GC.API_BASE || "/cs/api";
+
+      var fmt = GC.fmt || function (value) {
+        value = Number(value || 0);
+        if (isNaN(value)) return "";
+        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      };
+      var unfmt = GC.unfmt || function (value) {
+        if (value === null || value === undefined) return 0;
+        return Number(String(value).replace(/[, %]/g, "")) || 0;
+      };
+      var clamp = GC.clamp || function (value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      };
+      var labelKorean = GC.labelKorean || function (ym) {
+        var parts = ym.split("-");
+        return parts[0] + "년 " + Number(parts[1]) + "월";
+      };
+      var addMonths = GC.addMonths || function (ym, delta) {
+        var parts = ym.split("-").map(Number);
+        var d = new Date(Date.UTC(parts[0], parts[1] - 1, 1));
+        d.setUTCMonth(d.getUTCMonth() + (delta || 0));
+        return d.toISOString().slice(0, 7);
+      };
+
+      var resizeRegistered = false;
+
+      var DEFAULT_FIXED_STATUSES = [
+        "배정대기",
+        "담당자 배정",
+        "부재중",
+        "리터치예정",
+        "고민중",
+        "장기부재",
+        "종료",
+        "Qualified"
+      ];
+
+      function recomputeTotalRow(fixedStatuses) {
+        var $g = $("#leadGrid");
+        var ids = $g.jqGrid("getDataIDs");
+        if (!ids.length) return;
+
+        var sumByStatus = {};
+        fixedStatuses.forEach(function (st) {
+          sumByStatus[st] = 0;
+        });
+        var grandTotal = 0;
+
+        for (var i = 0; i < ids.length; i++) {
+          var id = ids[i];
+          if (id === "TOTAL") continue;
+          fixedStatuses.forEach(function (st) {
+            sumByStatus[st] += unfmt($g.jqGrid("getCell", id, st));
+          });
+          grandTotal += unfmt($g.jqGrid("getCell", id, "total"));
+        }
+
+        var totalQualified = sumByStatus["Qualified"] || 0;
+        var conv = grandTotal > 0 ? ((totalQualified / grandTotal) * 100).toFixed(1) + "%" : "0.0%";
+
+        if (ids[ids.length - 1] !== "TOTAL") {
+          var add = { ownerId: "TOTAL", ownerName: "총 합계" };
+          fixedStatuses.forEach(function (st) { add[st] = 0; });
+          add.total = 0;
+          add.conversionRate = "0.0%";
+          $g.jqGrid("addRowData", "TOTAL", add, "last");
+        }
+
+        fixedStatuses.forEach(function (st) {
+          $g.jqGrid("setCell", "TOTAL", st, sumByStatus[st]);
+        });
+        $g.jqGrid("setCell", "TOTAL", "total", grandTotal);
+        $g.jqGrid("setCell", "TOTAL", "conversionRate", conv);
+
+        $("#" + $.jgrid.jqID("TOTAL")).addClass("footer-row");
+      }
+
+      function buildLeadGrid(rows, fixedStatuses) {
+        if ($("#leadGrid")[0] && $("#leadGrid")[0].grid) {
+          $("#leadGrid").GridUnload();
+        }
+
+        var colNames = ["OwnerId", "Owner Name"];
+        var colModel = [
+          { name: "ownerId", index: "ownerId", width: 180, key: true },
+          { name: "ownerName", index: "ownerName", width: 120, align: "center" }
+        ];
+
+        fixedStatuses.forEach(function (st) {
+          colNames.push(st);
+          colModel.push({
+            name: st,
+            index: st,
+            width: 110,
+            align: "right",
+            formatter: function (v) { return fmt(v); },
+            sorttype: "number",
+            editable: st === "Qualified"
+          });
+        });
+
+        colNames.push("Total");
+        colModel.push({
+          name: "total",
+          index: "total",
+          width: 120,
+          align: "right",
+          formatter: function (v) { return fmt(v); },
+          sorttype: "number",
+          editable: false
+        });
+
+        colNames.push("전환율");
+        colModel.push({
+          name: "conversionRate",
+          index: "conversionRate",
+          width: 100,
+          align: "right",
+          formatter: function (v) { return String(v || "0.0%"); },
+          sorttype: "float",
+          editable: true
+        });
+
+        $("#leadGrid").jqGrid({
+          datatype: "local",
+          data: rows,
+          colNames: colNames,
+          colModel: colModel,
+          pager: "#leadGrid-pager",
+          rowNum: 1000,
+          rowList: [20, 50, 1000],
+          viewrecords: true,
+          autowidth: true,
+          shrinkToFit: false,
+          height: 420,
+          cellEdit: true,
+          cellsubmit: "clientArray",
+          afterSaveCell: function (rowid, cellname, value) {
+            if (rowid === "TOTAL") return;
+            var $g = $("#leadGrid");
+            var total = unfmt($g.jqGrid("getCell", rowid, "total"));
+
+            if (cellname === "conversionRate") {
+              var rate = parseFloat(String(value).replace("%", ""));
+              if (!isFinite(rate)) rate = 0;
+              rate = clamp(rate, 0, 100);
+
+              var qualified = Math.round(total * (rate / 100));
+              $g.jqGrid("setCell", rowid, "Qualified", qualified);
+              $g.jqGrid("setCell", rowid, "conversionRate", rate.toFixed(1) + "%");
+            }
+
+            if (cellname === "Qualified") {
+              var qualifiedNew = unfmt(value);
+              if (qualifiedNew < 0) qualifiedNew = 0;
+              if (qualifiedNew > total) qualifiedNew = total;
+
+              $g.jqGrid("setCell", rowid, "Qualified", qualifiedNew);
+
+              var rate = total > 0 ? ((qualifiedNew / total) * 100).toFixed(1) + "%" : "0.0%";
+              $g.jqGrid("setCell", rowid, "conversionRate", rate);
+            }
+
+            recomputeTotalRow(fixedStatuses);
+          },
+          loadComplete: function () {
+            var ids = $("#leadGrid").jqGrid("getDataIDs");
+            if (ids.length && ids[ids.length - 1] === "TOTAL") {
+              $("#" + $.jgrid.jqID("TOTAL")).addClass("footer-row");
+            }
+          }
+        });
+
+        if (!resizeRegistered && GC.registerGridResize) {
+          GC.registerGridResize("#leadGrid", { minHeight: 200, bottomOffset: 30 });
+          resizeRegistered = true;
+        } else if (typeof jQuery !== "undefined") {
+          setTimeout(function () {
+            jQuery(window).trigger("resize");
+          }, 0);
+        } else if (typeof window !== "undefined") {
+          setTimeout(function () {
+            window.dispatchEvent(new Event("resize"));
+          }, 0);
+        }
+
+        recomputeTotalRow(fixedStatuses);
+      }
+
+      function loadLeads() {
+        var ym = $("#month").val();
+        var dept = $("#ownerDept").val();
+        $("#title").text("조회: " + labelKorean(ym) + (dept ? " / " + dept : ""));
+
+        var url =
+          API_BASE +
+          "/leads/count-by-owner" +
+          "?month=" + encodeURIComponent(ym) +
+          "&ownerDept=" + encodeURIComponent(dept) +
+          "&groupBy=owner_status_fixed";
+
+        $.getJSON(url, function (resp) {
+          var fixedStatuses = Array.isArray(resp.fixedStatuses) && resp.fixedStatuses.length
+            ? resp.fixedStatuses
+            : DEFAULT_FIXED_STATUSES.slice();
+
+          var rows = Array.isArray(resp.rows) ? resp.rows.slice() : [];
+
+          if (resp.footer) {
+            var footRow = Object.assign({ ownerId: "TOTAL" }, resp.footer);
+            footRow.ownerName = resp.footer.ownerName || "총 합계";
+            fixedStatuses.forEach(function (st) { footRow[st] = Number(footRow[st] || 0); });
+            footRow.total = Number(footRow.total || 0);
+            rows.push(footRow);
+          }
+
+          rows.sort(function (a, b) {
+            if (a.ownerId === "TOTAL") return 1;
+            if (b.ownerId === "TOTAL") return -1;
+            return (a.ownerName || "").localeCompare(b.ownerName || "", "ko") ||
+                   (a.ownerId || "").localeCompare(b.ownerId || "");
+          });
+
+          if (typeof resp.totalCount === "number") {
+            $("#title").text(function (_, current) {
+              return current + " / 총 리드: " + resp.totalCount.toLocaleString();
+            });
+          }
+
+          buildLeadGrid(rows, fixedStatuses);
+        }).fail(function (xhr) {
+          alert("데이터 로딩 실패: " + (xhr && xhr.status));
+        });
+      }
+
+      $(function () {
+        if (GC.initToolbar) {
+          GC.initToolbar({ onChange: loadLeads });
+        } else {
+          var d = new Date();
+          d.setDate(1);
+          $("#month").val(d.toISOString().slice(0, 7));
+
+          $("#loadBtn").on("click", loadLeads);
+          $("#prevBtn").on("click", function () {
+            $("#month").val(addMonths($("#month").val(), -1));
+            loadLeads();
+          });
+          $("#nextBtn").on("click", function () {
+            $("#month").val(addMonths($("#month").val(), 1));
+            loadLeads();
+          });
+          $("#ownerDept").on("change", loadLeads);
+          $("#month").on("change", loadLeads);
+          loadLeads();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

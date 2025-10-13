@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Lead Count — 일자별(1~31) 컬럼</title>
+
+  <!-- Third-party styles -->
+  <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.14/themes/redmond/jquery-ui.css" type="text/css" />
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/jqgrid/4.6.0/css/ui.jqgrid.css" type="text/css" />
+
+  <!-- Shared styles -->
+  <link rel="stylesheet" href="/cs/static/assets/common.css" type="text/css" />
+
+  <style>
+    tr.jqgrow.footer-row td {
+      background: #fff8b3 !important;
+      font-weight: 700 !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="sidebar__title">Salesforce 리포트</h1>
+      <p class="sidebar__subtitle">Lead 분석 대시보드</p>
+      <nav class="sidebar__nav">
+        <a href="/cs/lead/dashboard">월간 리드 현황</a>
+        <a href="/cs/lead/dashboard/daily">일자별 리드</a>
+        <!-- <a href="/cs/lead/dashboard/map">리드 지도</a> -->
+        <!-- <a href="/cs/lead/dashboard/owners">오너별 기회</a> -->
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="page-header">
+        <h2 class="page-header__title">리드 현황 (일자별)</h2>
+        <p class="page-header__desc">일자별 리드 유입량을 담당자 기준으로 비교해보세요.</p>
+      </div>
+
+      <div class="toolbar">
+        <label for="month">월 선택:</label>
+        <input type="month" id="month" />
+        <label for="ownerDept">부서:</label>
+        <select id="ownerDept">
+          <option value="아웃바운드세일즈">아웃바운드세일즈</option>
+          <option value="인바운드세일즈">인바운드세일즈</option>
+          <option value="채널세일즈팀">채널세일즈팀</option>
+          <option value="리텐션">리텐션</option>
+        </select>
+        <button id="prevBtn">◀ 이전달</button>
+        <button id="nextBtn">다음달 ▶</button>
+        <button id="loadBtn">불러오기</button>
+        <span id="title"></span>
+      </div>
+
+      <table id="leadGrid"></table>
+      <div id="leadGrid-pager"></div>
+    </main>
+  </div>
+
+  <!-- Third-party scripts -->
+  <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.10.3/jquery-ui.min.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/i18n/grid.locale-kr.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/jquery.jqGrid.src.js"></script>
+  <script src="/cs/static/shared/cs-common.js"></script>
+
+  <!-- Shared helpers -->
+  <script src="/cs/static/assets/gridCommon.js"></script>
+
+  <script>
+    (function () {
+      var GC = window.gridCommon || {};
+      var API_BASE = GC.API_BASE || "/cs/api";
+
+      var fmt = GC.fmt || function (value) {
+        value = Number(value || 0);
+        if (isNaN(value)) return "";
+        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      };
+      var labelKorean = GC.labelKorean || function (ym) {
+        var parts = ym.split("-");
+        return parts[0] + "년 " + Number(parts[1]) + "월";
+      };
+      var addMonths = GC.addMonths || function (ym, delta) {
+        var parts = ym.split("-").map(Number);
+        var d = new Date(Date.UTC(parts[0], parts[1] - 1, 1));
+        d.setUTCMonth(d.getUTCMonth() + (delta || 0));
+        return d.toISOString().slice(0, 7);
+      };
+      var unfmt = GC.unfmt || function (value) {
+        if (value === null || value === undefined) return 0;
+        return Number(String(value).replace(/[, %]/g, "")) || 0;
+      };
+
+      var resizeRegistered = false;
+
+      function getLastDay(ym) {
+        var parts = ym.split("-").map(Number);
+        return new Date(parts[0], parts[1], 0).getDate();
+      }
+
+      function mapDayToKey(dateKeys) {
+        var mapper = {};
+        (dateKeys || []).forEach(function (key) {
+          var day = key.slice(-2);
+          mapper[day] = key;
+        });
+        return mapper;
+      }
+
+      function recomputeFooter(lastDay) {
+        var $g = $("#leadGrid");
+        var ids = $g.jqGrid("getDataIDs");
+        if (!ids.length) return;
+
+        var footer = { ownerId: "TOTAL", ownerName: "총 합계", total: 0 };
+        for (var d = 1; d <= lastDay; d++) {
+          footer["d" + d] = 0;
+        }
+
+        ids.forEach(function (id) {
+          if (id === "TOTAL") return;
+          var rowTotal = 0;
+          for (var day = 1; day <= lastDay; day++) {
+            var key = "d" + day;
+            var value = unfmt($g.jqGrid("getCell", id, key));
+            footer[key] += value;
+            rowTotal += value;
+          }
+          $g.jqGrid("setCell", id, "total", rowTotal);
+          footer.total += rowTotal;
+        });
+
+        if (ids[ids.length - 1] !== "TOTAL") {
+          $g.jqGrid("addRowData", "TOTAL", footer, "last");
+        } else {
+          for (var d2 = 1; d2 <= lastDay; d2++) {
+            $g.jqGrid("setCell", "TOTAL", "d" + d2, footer["d" + d2]);
+          }
+          $g.jqGrid("setCell", "TOTAL", "total", footer.total);
+        }
+
+        $("#" + $.jgrid.jqID("TOTAL")).addClass("footer-row");
+      }
+
+      function buildGrid(rows, lastDay) {
+        if ($("#leadGrid")[0] && $("#leadGrid")[0].grid) {
+          $("#leadGrid").GridUnload();
+        }
+
+        var colNames = ["담당자"];
+        var colModel = [
+          { name: "ownerName", index: "ownerName", width: 150, align: "left", frozen: true }
+        ];
+
+        for (var d = 1; d <= 31; d++) {
+          colNames.push(d + "일");
+          colModel.push({
+            name: "d" + d,
+            index: "d" + d,
+            width: 80,
+            align: "right",
+            formatter: function (v) { return fmt(v); },
+            sorttype: "number"
+          });
+        }
+
+        colNames.push("합계");
+        colModel.push({
+          name: "total",
+          index: "total",
+          width: 100,
+          align: "right",
+          formatter: function (v) { return fmt(v); },
+          sorttype: "number"
+        });
+
+        colNames.push("OwnerId");
+        colModel.push({
+          name: "ownerId",
+          index: "ownerId",
+          width: 120,
+          hidden: true,
+          key: true
+        });
+
+        $("#leadGrid").jqGrid({
+          datatype: "local",
+          data: rows,
+          colNames: colNames,
+          colModel: colModel,
+          pager: "#leadGrid-pager",
+          rowNum: 1000,
+          rowList: [50, 200, 1000],
+          viewrecords: true,
+          autowidth: true,
+          shrinkToFit: false,
+          height: 440,
+          loadComplete: function () {
+            for (var day = 31; day > lastDay; day--) {
+              $("#leadGrid").jqGrid("hideCol", "d" + day);
+            }
+            recomputeFooter(lastDay);
+          }
+        });
+
+        $("#leadGrid").jqGrid("setFrozenColumns");
+
+        if (!resizeRegistered && GC.registerGridResize) {
+          GC.registerGridResize("#leadGrid", { minHeight: 220, bottomOffset: 30 });
+          resizeRegistered = true;
+        } else if (typeof jQuery !== "undefined") {
+          setTimeout(function () {
+            jQuery(window).trigger("resize");
+          }, 0);
+        } else if (typeof window !== "undefined") {
+          setTimeout(function () {
+            window.dispatchEvent(new Event("resize"));
+          }, 0);
+        }
+      }
+
+      function toRows(resp) {
+        var owners = Array.isArray(resp.owners) ? resp.owners : [];
+        var dateKeys = Array.isArray(resp.dateKeys) ? resp.dateKeys : [];
+        var ym = $("#month").val();
+        var lastDay = getLastDay(ym);
+        var mapper = mapDayToKey(dateKeys);
+
+        var rows = owners.map(function (owner) {
+          var row = { ownerId: owner.ownerId, ownerName: owner.ownerName, total: 0 };
+          for (var d = 1; d <= 31; d++) {
+            var dd = ("0" + d).slice(-2);
+            var key = mapper[dd];
+            var count = (key && owner.daily && typeof owner.daily[key] === "number")
+              ? owner.daily[key]
+              : 0;
+            row["d" + d] = count;
+            if (d <= lastDay) {
+              row.total += count;
+            }
+          }
+          return row;
+        });
+
+        return { rows: rows, lastDay: lastDay };
+      }
+
+      function loadData() {
+        var ym = $("#month").val();
+        var dept = $("#ownerDept").val();
+        $("#title").text("조회: " + labelKorean(ym) + (dept ? " / " + dept : ""));
+
+        var url =
+          API_BASE +
+          "/leads/daily-by-owner" +
+          "?month=" + encodeURIComponent(ym) +
+          "&ownerDept=" + encodeURIComponent(dept);
+
+        $.getJSON(url, function (resp) {
+          var mapped = toRows(resp);
+          buildGrid(mapped.rows, mapped.lastDay);
+        }).fail(function (xhr) {
+          alert("데이터 로딩 실패: " + (xhr && xhr.status));
+        });
+      }
+
+      $(function () {
+        if (GC.initToolbar) {
+          GC.initToolbar({ onChange: loadData });
+        } else {
+          var d = new Date();
+          d.setDate(1);
+          $("#month").val(d.toISOString().slice(0, 7));
+
+          $("#loadBtn").on("click", loadData);
+          $("#prevBtn").on("click", function () {
+            $("#month").val(addMonths($("#month").val(), -1));
+            loadData();
+          });
+          $("#nextBtn").on("click", function () {
+            $("#month").val(addMonths($("#month").val(), 1));
+            loadData();
+          });
+          $("#ownerDept").on("change", loadData);
+          $("#month").on("change", loadData);
+          loadData();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
