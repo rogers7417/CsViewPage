@@ -119,7 +119,7 @@ exports.handleOAuthCallback = async (req, res) => {
 
     setToken({ access_token, instance_url });
     res.cookie('sf_logged_in', '1', { maxAge: 3600000 });
-    res.redirect('/cs/lead/daily');
+    res.redirect('/cs/lead/dashboard');
   } catch (err) {
     console.error('토큰 오류:', err.response?.data || err.message);
     res.status(500).send('토큰 요청 실패');
