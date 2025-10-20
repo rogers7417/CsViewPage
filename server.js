@@ -1473,7 +1473,7 @@ app.get('/contracts', async (req, res) => {
     }
 });
 
-app.get('/snapshot/latest', async (_req, res) => {
+async function handleSnapshotLatest(_req, res) {
     try {
         const doc = await fetchLatestSnapshot();
         if (!doc) {
@@ -1484,7 +1484,10 @@ app.get('/snapshot/latest', async (_req, res) => {
         log('error', 'snapshot latest error', { err: err.message || err });
         res.status(500).json({ error: err.message || String(err) });
     }
-});
+}
+
+app.get('/snapshot/latest', handleSnapshotLatest);
+app.get('/cs/snapshot/latest', handleSnapshotLatest);
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
     console.log(`✅ Listening on http://localhost:${PORT}`);
