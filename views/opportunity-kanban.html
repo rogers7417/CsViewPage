@@ -314,6 +314,10 @@
       async function loadSnapshot() {
         try {
           const res = await fetch("/snapshot/latest", { cache: "no-store" });
+          if (res.status === 401) {
+            window.location.href = "/cs/login";
+            return;
+          }
           if (!res.ok) throw new Error("스냅샷을 불러오지 못했습니다.");
           snapshotData = await res.json();
           populateFilters();

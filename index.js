@@ -24,7 +24,7 @@ app.use('/cs', csRouter);
 app.use('/cs/static', express.static(path.join(__dirname, 'views')));
 
 // Proxy endpoints to align with API server routes.
-app.get('/contracts', async (req, res) => {
+app.get('/cs/contracts', async (req, res) => {
     try {
         const { data } = await apiClient.get('contracts', { params: req.query });
         res.json(data);
@@ -36,7 +36,7 @@ app.get('/contracts', async (req, res) => {
     }
 });
 
-app.get('/snapshot/latest', async (req, res) => {
+app.get('/cs/snapshot/latest', async (req, res) => {
     try {
         const { data } = await apiClient.get('snapshot/latest');
         res.json(data);
