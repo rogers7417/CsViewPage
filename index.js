@@ -60,7 +60,7 @@ async function handleLeadSummary(req, res) {
     }
 }
 
-app.post('/insights/lead-summary', handleLeadSummary);
+app.post('/cs/insights/lead-summary', handleLeadSummary);
 app.post('/cs/insights/lead-summary', handleLeadSummary);
 
 function hasSnapshotAccess(req) {

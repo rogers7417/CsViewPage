@@ -122,6 +122,7 @@ async function resolveMonthlyMetrics({ months, ownerDept }) {
     const dateEnd = lastBounds.endDate;
 
     const { accessToken, instanceUrl } = await getSalesforceToken();
+    console.info('[leadSummary] fetched Salesforce token');
 
     const deptClause = (function () {
         if (!ownerDept || typeof ownerDept !== 'string' || !ownerDept.trim()) return null;
@@ -145,6 +146,7 @@ async function resolveMonthlyMetrics({ months, ownerDept }) {
         WHERE ${leadWhere.join(' AND ')}
     `.trim();
     const leadRows = await queryAll(instanceUrl, accessToken, leadSOQL);
+    console.info('[leadSummary] lead rows fetched', { count: leadRows.length });
     for (const row of leadRows) {
         const key = extractMonthKey(row.CreatedDate);
         if (key && statsMap.has(key)) {
@@ -166,6 +168,7 @@ async function resolveMonthlyMetrics({ months, ownerDept }) {
         WHERE ${oppWhere.join(' AND ')}
     `.trim();
     const oppRows = await queryAll(instanceUrl, accessToken, oppSOQL);
+    console.info('[leadSummary] opportunity rows fetched', { count: oppRows.length });
     for (const row of oppRows) {
         const key = extractMonthKey(row.CreatedDate);
         if (key && statsMap.has(key)) {
@@ -190,6 +193,7 @@ async function resolveMonthlyMetrics({ months, ownerDept }) {
         WHERE ${contractWhere.join(' AND ')}
     `.trim();
     const contractRows = await queryAll(instanceUrl, accessToken, contractSOQL);
+    console.info('[leadSummary] contract rows fetched', { count: contractRows.length });
     for (const row of contractRows) {
         const key = extractMonthKey(row.ContractDateStart__c);
         if (!key || !statsMap.has(key)) continue;
