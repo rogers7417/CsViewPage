@@ -3,15 +3,19 @@ const { MongoClient } = require('mongodb');
 let mongoClientPromise = null;
 
 async function getMongoClient() {
-    if (!process.env.SNAPSHOT_MONGO_URI) {
+    const uri = process.env.SNAPSHOT_MONGO_URI;
+    if (!uri) {
+        console.error('[snapshotStore] SNAPSHOT_MONGO_URI is not configured');
         throw new Error('SNAPSHOT_MONGO_URI is not configured');
     }
 
     if (!mongoClientPromise) {
-        const client = new MongoClient(process.env.SNAPSHOT_MONGO_URI, {
+        console.info('[snapshotStore] connecting to MongoDB', { uri });
+        const client = new MongoClient(uri, {
             maxPoolSize: Number(process.env.SNAPSHOT_MONGO_POOL_SIZE || 5),
         });
         mongoClientPromise = client.connect().catch((err) => {
+            console.error('[snapshotStore] MongoDB connection failed', err);
             mongoClientPromise = null;
             throw err;
         });
@@ -21,15 +25,30 @@ async function getMongoClient() {
 }
 
 async function initSnapshotMongo() {
-    const client = await getMongoClient();
-    const dbName = process.env.SNAPSHOT_MONGO_DB || 'opportunitySnapshot';
+    const dbName = process.env.SNAPSHOT_MONGO_DB || 'salesforeLighting';
     const collectionName = process.env.SNAPSHOT_MONGO_COLLECTION || 'opportunitySnapshot';
-    return client.db(dbName).collection(collectionName);
+    try {
+        const client = await getMongoClient();
+        console.info('[snapshotStore] using collection', { dbName, collectionName });
+        return client.db(dbName).collection(collectionName);
+    } catch (err) {
+        console.error('[snapshotStore] initSnapshotMongo error', err);
+        throw err;
+    }
 }
 
 async function fetchLatestSnapshot() {
-    const collection = await initSnapshotMongo();
-    return collection.find().sort({ date: -1 }).limit(1).next();
+    try {
+        const collection = await initSnapshotMongo();
+        const doc = await collection.find().sort({ date: -1 }).limit(1).next();
+        if (!doc) {
+            console.warn('[snapshotStore] latest snapshot not found');
+        }
+        return doc;
+    } catch (err) {
+        console.error('[snapshotStore] fetchLatestSnapshot error', err);
+        throw err;
+    }
 }
 
 module.exports = {
