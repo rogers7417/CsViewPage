@@ -47,7 +47,15 @@ async function handleLeadSummary(req, res) {
     } catch (err) {
         const status = err.status || err.response?.status || 500;
         const message = err.message || err.response?.data || 'Failed to create lead summary insight';
-        console.error('POST /insights/lead-summary error', { message, code: err.code });
+        console.error('POST /insights/lead-summary error', {
+            message,
+            code: err.code,
+            status,
+            openai: err?.response?.status || null,
+        });
+        if (err.response?.data) {
+            console.error('POST /insights/lead-summary error payload', err.response.data);
+        }
         res.status(status).json({ error: message, code: err.code || 'UNEXPECTED' });
     }
 }

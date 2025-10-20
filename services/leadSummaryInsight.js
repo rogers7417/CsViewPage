@@ -233,6 +233,12 @@ async function generateLeadSummaryInsight({ monthlyData, targetTablets = 400, ow
         throw makeError('OPENAI_API_KEY not configured', 503, 'OPENAI_NOT_CONFIGURED');
     }
 
+    console.info('[leadSummary] generating insight', {
+        providedData: Array.isArray(monthlyData) ? monthlyData.length : 0,
+        targetTablets,
+        ownerDept,
+    });
+
     let baseData = Array.isArray(monthlyData) ? monthlyData : [];
     if (!baseData.length) {
         baseData = await resolveMonthlyMetrics({ ownerDept });
@@ -250,6 +256,10 @@ async function generateLeadSummaryInsight({ monthlyData, targetTablets = 400, ow
         .filter((item) => typeof item.month === 'string' && item.month.length >= 7);
 
     if (!sanitized.length) {
+        console.warn('[leadSummary] no sanitized monthly data', {
+            ownerDept,
+            baseCount: Array.isArray(baseData) ? baseData.length : null,
+        });
         throw makeError('monthly data unavailable', 400, 'MONTHLY_DATA_UNAVAILABLE');
     }
 
@@ -428,6 +438,11 @@ async function generateLeadSummaryInsight({ monthlyData, targetTablets = 400, ow
         max_output_tokens: 1200
     });
 
+    console.info('[leadSummary] OpenAI response received', {
+        status: response?.status || 'ok',
+        outputType: typeof response?.output_text,
+    });
+
     const raw =
         response?.output_text ||
         response?.output?.[0]?.content?.[0]?.text ||
@@ -437,8 +452,14 @@ async function generateLeadSummaryInsight({ monthlyData, targetTablets = 400, ow
     try {
         parsed = raw ? JSON.parse(raw) : null;
     } catch (err) {
+        console.error('[leadSummary] OpenAI JSON parse failed', err);
         throw makeError('Failed to parse OpenAI response', 502, 'OPENAI_PARSE_FAILED');
     }
+
+    console.info('[leadSummary] insight generation completed', {
+        sanitizedCount: sanitized.length,
+        summaryForPrompt,
+    });
 
     return {
         generatedAt: new Date().toISOString(),
