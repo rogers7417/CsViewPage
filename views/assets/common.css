@@ -1,3 +1,7 @@
+:root {
+  --sidebar-width: 240px;
+}
+
 body {
   margin: 0;
   font-family: Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;
@@ -12,7 +16,7 @@ body {
 }
 
 .sidebar {
-  width: 220px;
+  width: var(--sidebar-width);
   background: #1f2933;
   color: #e2e8f0;
   padding: 24px 20px;
