@@ -49,13 +49,16 @@ function hasSnapshotAccess(req) {
 
 async function handleSnapshotRequest(req, res) {
     if (!hasSnapshotAccess(req)) {
+        console.warn('[snapshot] unauthorized access', { path: req.originalUrl, cookies: req.cookies ? Object.keys(req.cookies) : [] });
         res.status(401).json({ error: 'Unauthorized' });
         return;
     }
 
     try {
+        console.log('[snapshot] fetching latest snapshot', req.originalUrl);
         const doc = await fetchLatestSnapshot();
         if (!doc) {
+            console.warn('[snapshot] document not found');
             res.status(404).json({ error: 'Snapshot not found' });
             return;
         }

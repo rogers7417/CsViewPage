@@ -1473,10 +1473,12 @@ app.get('/contracts', async (req, res) => {
     }
 });
 
-async function handleSnapshotLatest(_req, res) {
+async function handleSnapshotLatest(req, res) {
+    log('info', 'snapshot latest request', { path: req.originalUrl });
     try {
         const doc = await fetchLatestSnapshot();
         if (!doc) {
+            log('warn', 'snapshot latest not found');
             return res.status(404).json({ error: 'Snapshot not found' });
         }
         res.json(doc);
