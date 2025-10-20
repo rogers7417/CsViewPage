@@ -28,6 +28,11 @@ exports.renderStoreList = (req, res) => {
   res.sendFile(path.join(VIEW_DIR, 'index.html'));
 };
 
+exports.renderOpportunityKanban = (req, res) => {
+  if (!ensureTokenOrRedirect(res)) return;
+  res.sendFile(path.join(VIEW_DIR, 'opportunity-kanban.html'));
+};
+
 exports.getAccount = async (req, res) => {
   const token = ensureTokenOrRedirect(res);
   if (!token) return;

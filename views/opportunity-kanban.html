@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>영업기회 칸반 보드</title>
+    <link rel="stylesheet" href="/cs/static/assets/common.css" type="text/css" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "Pretendard", "Apple SD Gothic Neo", "맑은 고딕", sans-serif;
+      }
+
+      .layout {
+        min-height: 100vh;
+        background: #0f172a;
+      }
+
+      .sidebar {
+        background: rgba(15, 23, 42, 0.95);
+        border-right: 1px solid rgba(148, 163, 184, 0.2);
+      }
+
+      .content {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        background: #0f172a;
+        padding: 0;
+      }
+
+      body {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+
+      header {
+        padding: 16px 24px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(6px);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      header h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .filters label {
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      select {
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(30, 41, 59, 0.8);
+        color: inherit;
+      }
+
+      main {
+        flex: 1 1 auto;
+        overflow-x: auto;
+        padding: 20px 24px 32px;
+      }
+
+      .board {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(220px, 1fr));
+        gap: 16px;
+        min-width: 1700px;
+      }
+
+      .column {
+        position: relative;
+        background: rgba(16, 24, 40, 0.78);
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100vh - 180px);
+        box-shadow: 0 14px 28px rgba(15, 23, 42, 0.35);
+      }
+
+      .column::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 6px;
+        background: var(--accent, #dc3545);
+        border-radius: 14px 14px 0 0;
+        opacity: 0.9;
+        pointer-events: none;
+      }
+
+      .column-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        font-weight: 600;
+        background: rgba(15, 23, 42, 0.92);
+        color: #f8fafc;
+        border-radius: 14px 14px 0 0;
+      }
+
+      .header-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .sort-button {
+        border: none;
+        background: rgba(30, 41, 59, 0.85);
+        border-radius: 999px;
+        padding: 4px 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        cursor: pointer;
+        color: #e2e8f0;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+      }
+
+      .sort-button:hover {
+        background: rgba(59, 130, 246, 0.35);
+        color: #ffffff;
+      }
+
+      .count-pill {
+        background: rgba(59, 130, 246, 0.2);
+        color: #93c5fd;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+      }
+
+      .cards {
+        padding: 12px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .card {
+        background: rgba(15, 23, 42, 0.85);
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        box-shadow: 0 8px 16px rgba(15, 23, 42, 0.35);
+      }
+
+      .card-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.18);
+        color: #bfdbfe;
+      }
+
+      .meta {
+        font-size: 12px;
+        color: #cbd5f5;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .meta .age-warning {
+        color: #fca5a5;
+        font-weight: 600;
+      }
+
+      .meta .age-fresh {
+        color: #bbf7d0;
+        font-weight: 600;
+      }
+
+      .meta .age-normal {
+        color: #fef08a;
+        font-weight: 600;
+      }
+      .empty {
+        font-size: 12px;
+        color: rgba(148, 163, 184, 0.8);
+      }
+
+      @media (max-width: 1200px) {
+        main {
+          padding: 16px;
+        }
+        .board {
+          grid-template-columns: repeat(4, minmax(220px, 1fr));
+          min-width: auto;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .board {
+          grid-template-columns: repeat(2, minmax(220px, 1fr));
+        }
+      }
+
+      @media (max-width: 600px) {
+        .board {
+          grid-template-columns: repeat(1, minmax(220px, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <h1 class="sidebar__title">Salesforce 리포트</h1>
+        <p class="sidebar__subtitle">리드 · 영업기회 현황</p>
+        <nav class="sidebar__nav">
+          <a href="/cs/lead/dashboard">월간 리드 현황</a>
+          <a href="/cs/lead/dashboard/daily">일자별 리드 현황</a>
+          <a href="/cs/opportunity/kanban">영업기회 칸반</a>
+        </nav>
+      </aside>
+
+      <div class="content">
+        <header>
+          <h1>영업기회 칸반 보드</h1>
+          <div class="filters">
+            <label>
+              부서
+              <select id="deptFilter">
+                <option value="">전체</option>
+              </select>
+            </label>
+            <label>
+              담당자
+              <select id="ownerFilter">
+                <option value="">전체</option>
+              </select>
+            </label>
+            <span id="snapshotInfo" style="font-size:12px;color:#94a3b8;"></span>
+          </div>
+        </header>
+
+        <main>
+          <div class="board" id="kanbanBoard"></div>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      function highlightActiveNav() {
+        const current = window.location.pathname.split('/').pop();
+        document.querySelectorAll('.sidebar__nav a').forEach((link) => {
+          const target = (link.getAttribute('href') || '').split('/').pop();
+          if (target === current) {
+            link.classList.add('active');
+          } else {
+            link.classList.remove('active');
+          }
+        });
+      }
+
+      const STAGE_COLUMNS = [
+        "방문배정",
+        "방문상담",
+        "견적",
+        "재견적",
+        "선납금",
+        "계약진행",
+        "출고진행",
+        "설치진행"
+      ];
+
+      let snapshotData = null;
+      let deptFilterEl = null;
+      let ownerFilterEl = null;
+      let boardEl = null;
+      let snapshotInfoEl = null;
+      const stageSortState = {};
+
+      async function loadSnapshot() {
+        try {
+          const res = await fetch("/snapshot/latest", { cache: "no-store" });
+          if (!res.ok) throw new Error("스냅샷을 불러오지 못했습니다.");
+          snapshotData = await res.json();
+          populateFilters();
+          renderBoard();
+        } catch (err) {
+          console.error(err);
+          boardEl.innerHTML = "<div style=\"color:#f87171;\">스냅샷을 불러오지 못했습니다.</div>";
+        }
+      }
+
+      function populateFilters() {
+        if (!snapshotData || !Array.isArray(snapshotData.currentStatus)) return;
+
+        const depts = new Set();
+        const owners = new Map();
+
+        snapshotData.currentStatus.forEach((entry) => {
+          if (entry.department) depts.add(entry.department);
+          if (entry.ownerId) owners.set(entry.ownerId, entry.ownerName || entry.ownerId);
+        });
+
+        const deptOptions = Array.from(depts)
+          .sort();
+
+        deptFilterEl.innerHTML = '<option value="">전체</option>' +
+          Array.from(depts)
+            .map((dept) => `<option value="${dept}"${dept === '아웃바운드세일즈' ? ' selected' : ''}>${dept}</option>`)
+            .join("");
+
+        ownerFilterEl.innerHTML = '<option value="">전체</option>' +
+          Array.from(owners.entries())
+            .sort((a, b) => a[1].localeCompare(b[1], "ko"))
+            .map(([id, name]) => `<option value="${id}">${name}</option>`)
+            .join("");
+
+        if (snapshotData.date) {
+          snapshotInfoEl.textContent = `스냅샷 기준일: ${snapshotData.date}`;
+        }
+
+        if (deptOptions.includes('아웃바운드세일즈')) {
+          deptFilterEl.value = '아웃바운드세일즈';
+        }
+      }
+
+      function getAccentColor(index, total) {
+        const start = [37, 99, 235]; // 파란색
+        const end = [220, 53, 69];   // #dc3545 (T-order red)
+        const ratio = total <= 1 ? 0 : index / (total - 1);
+        const r = Math.round(start[0] + (end[0] - start[0]) * ratio);
+        const g = Math.round(start[1] + (end[1] - start[1]) * ratio);
+        const b = Math.round(start[2] + (end[2] - start[2]) * ratio);
+        return `rgba(${r}, ${g}, ${b}, 0.92)`;
+      }
+
+      function renderBoard() {
+        if (!snapshotData || !Array.isArray(snapshotData.currentStatus)) return;
+
+        const dept = deptFilterEl.value;
+        const owner = ownerFilterEl.value;
+        const columns = STAGE_COLUMNS.map((stage, idx) => ({ stage, index: idx, cards: [] }));
+
+        snapshotData.currentStatus.forEach((entry) => {
+          if (dept && entry.department !== dept) return;
+          if (owner && entry.ownerId !== owner) return;
+
+          STAGE_COLUMNS.forEach((stage) => {
+            const stageInfo = entry.stages?.[stage];
+            if (!stageInfo || !Array.isArray(stageInfo.opportunities)) return;
+
+            stageInfo.opportunities.forEach((opp) => {
+              columns.find((col) => col.stage === stage).cards.push({
+                ...opp,
+                department: entry.department,
+                ownerName: entry.ownerName || entry.ownerId,
+              });
+            });
+          });
+        });
+
+const html = columns.map((col) => {
+  col.cards.sort((a, b) => compareDates(a, b, stageSortState[col.stage] || "desc"));
+  const cardsHtml = col.cards.length
+    ? col.cards.map(renderCard).join("")
+    : `<div class="empty">등록된 기회가 없습니다.</div>`;
+
+  const sortOrder = stageSortState[col.stage] || "desc";
+  const arrow = sortOrder === "desc" ? "▼" : "▲";
+
+  return `
+    <section class="column" style="--accent:${getAccentColor(col.index, columns.length)};">
+              <header class="column-header">
+                <span>${col.stage}</span>
+                <span class="header-actions">
+                  <button class="sort-button" data-stage="${col.stage}" title="정렬 변경">
+                    ${arrow}
+                  </button>
+                  <span class="count-pill">${col.cards.length}</span>
+                </span>
+              </header>
+              <div class="cards">${cardsHtml}</div>
+            </section>
+          `;
+        }).join("");
+
+        boardEl.innerHTML = html;
+      }
+
+      function renderCard(opp) {
+        const age = Number.isFinite(opp.AgeInDays) ? `${opp.AgeInDays}일` : null;
+        const lastModDate = opp.LastModifiedDate ? new Date(opp.LastModifiedDate) : null;
+        const createdDate = opp.CreatedDate ? new Date(opp.CreatedDate) : null;
+        const lastMod = lastModDate ? lastModDate.toISOString().slice(0, 10) : null;
+        const created = createdDate ? createdDate.toISOString().slice(0, 10) : null;
+
+        const dayCount = Number.isFinite(opp.AgeInDays) ? opp.AgeInDays : null;
+        const isStale = dayCount !== null && dayCount >= 200;
+        const isFresh = dayCount !== null && dayCount <= 7;
+        const ageClass = isStale ? "age-warning" : (isFresh ? "age-fresh" : (dayCount !== null ? "age-normal" : null));
+        const ageLine = age
+          ? ageClass
+            ? `<span class="${ageClass}">${age}</span>`
+            : age
+          : null;
+
+         const metaLines = [
+           wrapMeta("부서", opp.department),
+         wrapMeta("담당자", opp.ownerName),
+          wrapMeta("태블릿", opp.ru_TabletQty__c != null ? `${opp.ru_TabletQty__c}대` : "-"),
+          aggLine("BO", opp.BOUserName),
+          aggLine("Field", opp.FieldUserName),
+          ageLine ? `경과: ${ageLine}` : wrapMeta("경과", "-"),
+           wrapMeta("등록", created),
+           wrapMeta("수정", lastMod)
+         ].filter(Boolean).map(line => `<div>${line}</div>`).join("");
+
+        return `
+          <article class="card">
+            <h3 class="card-title">${escapeHtml(opp.Name || opp.Id || "영업기회")}</h3>
+            <span class="badge">ID ${escapeHtml(opp.Id || "-")}</span>
+            <div class="meta">${metaLines}</div>
+          </article>
+        `;
+      }
+
+      function compareDates(a, b, order) {
+        const aTime = getComparableTime(a);
+        const bTime = getComparableTime(b);
+        if (order === "asc") {
+          return aTime - bTime;
+        }
+        return bTime - aTime;
+      }
+
+      function getComparableTime(opp) {
+        const lastMod = opp.LastModifiedDate ? Date.parse(opp.LastModifiedDate) : NaN;
+        const created = opp.CreatedDate ? Date.parse(opp.CreatedDate) : NaN;
+        if (!Number.isNaN(lastMod)) return lastMod;
+        if (!Number.isNaN(created)) return created;
+        return 0;
+      }
+
+      function aggLine(label, value) {
+        if (!value) return null;
+        return `${label}: ${escapeHtml(value)}`;
+      }
+
+      function wrapMeta(label, value) {
+        if (!value || value === "-") return `${label}: -`;
+        return `${label}: ${escapeHtml(value)}`;
+      }
+
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        highlightActiveNav();
+
+        deptFilterEl = document.getElementById("deptFilter");
+        ownerFilterEl = document.getElementById("ownerFilter");
+        boardEl = document.getElementById("kanbanBoard");
+        snapshotInfoEl = document.getElementById("snapshotInfo");
+
+        deptFilterEl.addEventListener("change", renderBoard);
+        ownerFilterEl.addEventListener("change", renderBoard);
+        boardEl.addEventListener("click", function (evt) {
+          const button = evt.target.closest(".sort-button");
+          if (!button) return;
+          const stage = button.dataset.stage;
+          if (!stage) return;
+          stageSortState[stage] = stageSortState[stage] === "asc" ? "desc" : "asc";
+          renderBoard();
+        });
+        STAGE_COLUMNS.forEach((stage) => {
+          stageSortState[stage] = "desc";
+        });
+
+        loadSnapshot();
+      });
+    </script>
+  </body>
+</html>

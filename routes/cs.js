@@ -18,5 +18,6 @@ router.get('/api/accounts/:accountId', csController.getAccount);
 router.get('/api/accounts/:accountId/summary', csController.getAccountSummary);
 router.get('/api/spaces', csController.getSpaces);
 router.get('/callback', csController.handleOAuthCallback);
+router.get('/opportunity/kanban', csController.renderOpportunityKanban);
 
 module.exports = router;
