@@ -313,7 +313,7 @@
 
       async function loadSnapshot() {
         try {
-          const res = await fetch("/snapshot/latest", { cache: "no-store" });
+          const res = await fetch("/cs/snapshot/latest", { cache: "no-store" });
           if (res.status === 401) {
             window.location.href = "/cs/login";
             return;

@@ -5,6 +5,7 @@ const cors = require('cors');
 const axios = require('axios');
 const { randomUUID } = require('crypto');
 const { createClient } = require('redis');
+const { fetchLatestSnapshot } = require('./services/snapshotStore');
 
 const app = express();
 app.use(cors());
@@ -1474,8 +1475,7 @@ app.get('/contracts', async (req, res) => {
 
 app.get('/snapshot/latest', async (_req, res) => {
     try {
-        const collSnap = await initSnapshotMongo();
-        const doc = await collSnap.find().sort({ date: -1 }).limit(1).next();
+        const doc = await fetchLatestSnapshot();
         if (!doc) {
             return res.status(404).json({ error: 'Snapshot not found' });
         }

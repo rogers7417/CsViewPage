@@ -2,6 +2,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const axios = require('axios');
+const { fetchLatestSnapshot } = require('./services/snapshotStore');
 require('dotenv').config();
 
 const app = express();
@@ -36,17 +37,37 @@ app.get('/cs/contracts', async (req, res) => {
     }
 });
 
-app.get('/cs/snapshot/latest', async (req, res) => {
-    try {
-        const { data } = await apiClient.get('snapshot/latest');
-        res.json(data);
-    } catch (err) {
-        const status = err.response?.status || 500;
-        const payload = err.response?.data || { error: 'Failed to fetch snapshot' };
-        console.error('GET /snapshot/latest proxy error', err.message || err);
-        res.status(status).json(payload);
+function hasSnapshotAccess(req) {
+    if (req.cookies?.sf_logged_in === '1') return true;
+
+    const expectedKey = process.env.SNAPSHOT_ACCESS_KEY;
+    if (!expectedKey) return false;
+
+    const headerKey = req.get('x-snapshot-key') || req.get('x-api-key');
+    return headerKey === expectedKey;
+}
+
+async function handleSnapshotRequest(req, res) {
+    if (!hasSnapshotAccess(req)) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
     }
-});
+
+    try {
+        const doc = await fetchLatestSnapshot();
+        if (!doc) {
+            res.status(404).json({ error: 'Snapshot not found' });
+            return;
+        }
+        res.json(doc);
+    } catch (err) {
+        console.error('GET /snapshot/latest handler error', err.message || err);
+        res.status(500).json({ error: err.message || 'Failed to fetch snapshot' });
+    }
+}
+
+app.get('/snapshot/latest', handleSnapshotRequest);
+app.get('/cs/snapshot/latest', handleSnapshotRequest);
 
 app.listen(3003, () => {
     console.log('✅ 서버 실행 중: http://localhost:3003');
