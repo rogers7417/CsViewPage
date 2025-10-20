@@ -22,8 +22,8 @@ async function getMongoClient() {
 
 async function initSnapshotMongo() {
     const client = await getMongoClient();
-    const dbName = process.env.SNAPSHOT_MONGO_DB || 'snapshots';
-    const collectionName = process.env.SNAPSHOT_MONGO_COLLECTION || 'snapshots';
+    const dbName = process.env.SNAPSHOT_MONGO_DB || 'opportunitySnapshot';
+    const collectionName = process.env.SNAPSHOT_MONGO_COLLECTION || 'opportunitySnapshot';
     return client.db(dbName).collection(collectionName);
 }
 
