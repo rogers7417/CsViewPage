@@ -6,6 +6,7 @@ const path = require('path');
 const axios = require('axios');
 const { fetchLatestSnapshot } = require('./services/snapshotStore');
 const { generateLeadSummaryInsight } = require('./services/leadSummaryInsight');
+const { getToken } = require('./services/salesforceSession');
 
 const app = express();
 
@@ -42,7 +43,12 @@ app.get('/cs/contracts', async (req, res) => {
 
 async function handleLeadSummary(req, res) {
     try {
-        const result = await generateLeadSummaryInsight(req.body || {});
+        const token = getToken();
+        if (!token?.access_token || !token?.instance_url) {
+            return res.status(401).json({ error: 'Salesforce authentication required' });
+        }
+
+        const result = await generateLeadSummaryInsight(req.body || {}, token);
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.status(200).json(result);
     } catch (err) {

@@ -14,27 +14,6 @@ function makeError(message, status = 500, code = 'UNEXPECTED') {
     return err;
 }
 
-async function getSalesforceToken() {
-    const loginUrl = process.env.SF_LOGIN_URL;
-    if (!loginUrl) {
-        throw makeError('SF_LOGIN_URL not configured', 500, 'SF_LOGIN_URL_MISSING');
-    }
-    if (!process.env.SF_CLIENT_ID || !process.env.SF_CLIENT_SECRET || !process.env.SF_USERNAME || !process.env.SF_PASSWORD) {
-        throw makeError('Salesforce credentials missing', 500, 'SF_CREDENTIALS_MISSING');
-    }
-
-    const url = `${loginUrl}/services/oauth2/token`;
-    const params = new URLSearchParams();
-    params.append('grant_type', 'password');
-    params.append('client_id', process.env.SF_CLIENT_ID);
-    params.append('client_secret', process.env.SF_CLIENT_SECRET);
-    params.append('username', process.env.SF_USERNAME);
-    params.append('password', decodeURIComponent(process.env.SF_PASSWORD));
-
-    const res = await axios.post(url, params);
-    return { accessToken: res.data.access_token, instanceUrl: res.data.instance_url };
-}
-
 async function sfGet(url, accessToken) {
     const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -91,9 +70,12 @@ function getMonthBoundaries(monthKey) {
     };
 }
 
-async function resolveMonthlyMetrics({ months, ownerDept }) {
+async function resolveMonthlyMetrics({ months, ownerDept, token }) {
     const monthList = (Array.isArray(months) && months.length) ? months : getRecentMonths(3);
     if (!monthList.length) return [];
+    if (!token?.access_token || !token?.instance_url) {
+        throw makeError('Salesforce token missing', 401, 'SF_TOKEN_MISSING');
+    }
 
     const statsMap = new Map();
     monthList.forEach((key) => {
@@ -121,8 +103,9 @@ async function resolveMonthlyMetrics({ months, ownerDept }) {
     const dateStart = firstBounds.startDate;
     const dateEnd = lastBounds.endDate;
 
-    const { accessToken, instanceUrl } = await getSalesforceToken();
-    console.info('[leadSummary] fetched Salesforce token');
+    const accessToken = token.access_token;
+    const instanceUrl = token.instance_url;
+    console.info('[leadSummary] using Salesforce token', { instanceUrl });
 
     const deptClause = (function () {
         if (!ownerDept || typeof ownerDept !== 'string' || !ownerDept.trim()) return null;
@@ -232,7 +215,7 @@ async function resolveMonthlyMetrics({ months, ownerDept }) {
     return monthList.map((key) => statsMap.get(key));
 }
 
-async function generateLeadSummaryInsight({ monthlyData, targetTablets = 400, ownerDept = null }) {
+async function generateLeadSummaryInsight({ monthlyData, targetTablets = 400, ownerDept = null }, token) {
     if (!openaiClient) {
         throw makeError('OPENAI_API_KEY not configured', 503, 'OPENAI_NOT_CONFIGURED');
     }
@@ -245,7 +228,10 @@ async function generateLeadSummaryInsight({ monthlyData, targetTablets = 400, ow
 
     let baseData = Array.isArray(monthlyData) ? monthlyData : [];
     if (!baseData.length) {
-        baseData = await resolveMonthlyMetrics({ ownerDept });
+        if (!token?.access_token || !token?.instance_url) {
+            throw makeError('Salesforce token missing', 401, 'SF_TOKEN_MISSING');
+        }
+        baseData = await resolveMonthlyMetrics({ ownerDept, token });
     }
 
     const sanitized = baseData
