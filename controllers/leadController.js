@@ -105,6 +105,11 @@ exports.renderLeadDailyDashboard = (req, res) => {
   res.sendFile(path.join(VIEW_DIR, 'leadByDailyDashboard.html'));
 };
 
+exports.renderLeadInsights = (req, res) => {
+  if (!ensureTokenOrRedirect(res)) return;
+  res.sendFile(path.join(VIEW_DIR, 'lead-insights.html'));
+};
+
 exports.getDailyByOwner = async (req, res) => {
   const token = ensureTokenOrJson(res);
   if (!token) return;

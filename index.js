@@ -3,6 +3,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const axios = require('axios');
 const { fetchLatestSnapshot } = require('./services/snapshotStore');
+const { generateLeadSummaryInsight } = require('./services/leadSummaryInsight');
 require('dotenv').config();
 
 const app = express();
@@ -21,6 +22,7 @@ const apiClient = axios.create({
 });
 
 app.use(cookieParser());
+app.use(express.json({ limit: '1mb' }));
 app.use('/cs', csRouter);
 app.use('/cs/static', express.static(path.join(__dirname, 'views')));
 
@@ -36,6 +38,22 @@ app.get('/cs/contracts', async (req, res) => {
         res.status(status).json(payload);
     }
 });
+
+async function handleLeadSummary(req, res) {
+    try {
+        const result = await generateLeadSummaryInsight(req.body || {});
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.status(200).json(result);
+    } catch (err) {
+        const status = err.status || err.response?.status || 500;
+        const message = err.message || err.response?.data || 'Failed to create lead summary insight';
+        console.error('POST /insights/lead-summary error', { message, code: err.code });
+        res.status(status).json({ error: message, code: err.code || 'UNEXPECTED' });
+    }
+}
+
+app.post('/insights/lead-summary', handleLeadSummary);
+app.post('/cs/insights/lead-summary', handleLeadSummary);
 
 function hasSnapshotAccess(req) {
     if (req.cookies?.sf_logged_in === '1') return true;

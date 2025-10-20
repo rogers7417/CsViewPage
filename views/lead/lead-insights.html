@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>전환 인사이트 리포트</title>
+
+  <!-- Shared styles -->
+  <link rel="stylesheet" href="/cs/static/assets/common.css" type="text/css" />
+
+  <style>
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+
+    .chart-card {
+      border: 1px solid #e3e6ed;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(40, 49, 71, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .chart-card__title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: #283147;
+    }
+
+    .chart-card__meta {
+      font-size: 12px;
+      color: #67728a;
+    }
+
+    .insight-block {
+      margin-top: 24px;
+    }
+
+    .insight-block__header {
+      margin-bottom: 12px;
+    }
+
+    .insight-block__title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .insight-block__desc {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .insight-status {
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border-radius: 6px;
+      background: #f4f6fb;
+      color: #2a3451;
+      font-size: 14px;
+      border: 1px solid #dce2f1;
+    }
+
+    .insight-status--error {
+      background: #fff5f5;
+      border-color: #f6c5c5;
+      color: #a42834;
+    }
+
+    .insight-status--success {
+      background: #f1fcf5;
+      border-color: #b8ead0;
+      color: #1d6b3a;
+    }
+
+    .insight-summary {
+      margin-top: 12px;
+      padding: 16px 20px;
+      border-radius: 6px;
+      border: 1px solid #e3e6ed;
+      background: #f9fbff;
+      line-height: 1.5;
+    }
+
+    .insight-summary__title {
+      margin: 0 0 12px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #283147;
+    }
+
+    .insight-summary__list {
+      margin: 0;
+      padding-left: 20px;
+      color: #42516f;
+    }
+
+    .insight-summary__list li {
+      margin-bottom: 6px;
+    }
+
+    .insight-summary__sublist {
+      margin-top: 6px;
+      padding-left: 18px;
+      color: #4b5b7a;
+      font-size: 13px;
+    }
+
+    .insight-summary__sublist li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="sidebar__title">Salesforce 리포트</h1>
+      <p class="sidebar__subtitle">Lead 분석 대시보드</p>
+      <nav class="sidebar__nav">
+        <a href="/cs/lead/dashboard">월간 리드 현황</a>
+        <a href="/cs/lead/dashboard/daily">일자별 리드 현황</a>
+        <a href="/cs/lead/insights">전환 인사이트</a>
+        <a href="/cs/opportunity/kanban">영업기회 칸반</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="page-header">
+        <h2 class="page-header__title">전환 인사이트 리포트</h2>
+        <p class="page-header__desc">월별 전환 지표와 10월 400대 목표 달성을 위해 필요한 액션을 한눈에 확인하세요.</p>
+      </div>
+
+      <div id="insightStatus" class="insight-status" role="status" aria-live="polite">
+        인사이트를 불러오는 중입니다...
+      </div>
+
+      <section class="insight-block" aria-labelledby="trend-section-title">
+        <div class="insight-block__header">
+          <h3 id="trend-section-title" class="insight-block__title">월별 변화 분석</h3>
+          <p class="insight-block__desc">최근 3개월 간 리드·영업기회·계약 변화를 비교하세요.</p>
+        </div>
+
+        <div class="chart-grid">
+          <section class="chart-card" aria-labelledby="chart-leads-title">
+            <h4 id="chart-leads-title" class="chart-card__title">리드 변화</h4>
+            <p class="chart-card__meta">월별 리드 생성 수량</p>
+            <canvas id="leadChart" height="180"></canvas>
+          </section>
+
+          <section class="chart-card" aria-labelledby="chart-opps-title">
+            <h4 id="chart-opps-title" class="chart-card__title">영업기회 변화</h4>
+            <p class="chart-card__meta">월별 영업기회 생성 수량</p>
+            <canvas id="opportunityChart" height="180"></canvas>
+          </section>
+
+          <section class="chart-card" aria-labelledby="chart-contracts-title">
+            <h4 id="chart-contracts-title" class="chart-card__title">계약 변화</h4>
+            <p class="chart-card__meta">월별 계약 체결 수량</p>
+            <canvas id="contractChart" height="180"></canvas>
+          </section>
+        </div>
+      </section>
+
+      <section class="insight-block" aria-labelledby="conversion-section-title">
+        <div class="insight-block__header">
+          <h3 id="conversion-section-title" class="insight-block__title">전환율 변화</h3>
+          <p class="insight-block__desc">리드→기회, 리드→계약, 기회→계약 전환율을 각각 추적하세요.</p>
+        </div>
+
+        <div class="chart-grid">
+          <section class="chart-card" aria-labelledby="chart-conv-lead-opp">
+            <h4 id="chart-conv-lead-opp" class="chart-card__title">리드→기회 전환율</h4>
+            <p class="chart-card__meta">월별 리드 대비 기회 전환 비율</p>
+            <canvas id="conversionLeadOppChart" height="180"></canvas>
+          </section>
+
+          <section class="chart-card" aria-labelledby="chart-conv-lead-contract">
+            <h4 id="chart-conv-lead-contract" class="chart-card__title">리드→계약 전환율</h4>
+            <p class="chart-card__meta">월별 리드 대비 계약 전환 비율</p>
+            <canvas id="conversionLeadContractChart" height="180"></canvas>
+          </section>
+
+          <section class="chart-card" aria-labelledby="chart-conv-opp-contract">
+            <h4 id="chart-conv-opp-contract" class="chart-card__title">기회→계약 전환율</h4>
+            <p class="chart-card__meta">월별 기회 대비 계약 전환 비율</p>
+            <canvas id="conversionOppContractChart" height="180"></canvas>
+          </section>
+        </div>
+      </section>
+
+      <section class="insight-block" aria-labelledby="performance-section-title">
+        <div class="insight-block__header">
+          <h3 id="performance-section-title" class="insight-block__title">판매 성과</h3>
+          <p class="insight-block__desc">테블릿 판매 실적과 계약 효율을 확인하세요.</p>
+        </div>
+
+        <div class="chart-grid">
+          <section class="chart-card" aria-labelledby="chart-discount-title">
+            <h4 id="chart-discount-title" class="chart-card__title">총 할인 변화</h4>
+            <p class="chart-card__meta">월별 프로모션/할인 금액 합계</p>
+            <canvas id="discountChart" height="180"></canvas>
+          </section>
+
+          <section class="chart-card" aria-labelledby="chart-tablet-title">
+            <h4 id="chart-tablet-title" class="chart-card__title">테블릿 판매 변화</h4>
+            <p class="chart-card__meta">실적 vs 10월 목표 400대</p>
+            <canvas id="tabletChart" height="180"></canvas>
+          </section>
+
+          <section class="chart-card" aria-labelledby="chart-efficiency-title">
+            <h4 id="chart-efficiency-title" class="chart-card__title">계약 효율성</h4>
+            <p class="chart-card__meta">계약당 평균 테블릿 수</p>
+            <canvas id="efficiencyChart" height="180"></canvas>
+          </section>
+        </div>
+      </section>
+
+      <section class="insight-summary" aria-labelledby="insight-summary-title">
+        <h3 id="insight-summary-title" class="insight-summary__title">10월 목표 400대 달성을 위한 핵심 액션</h3>
+        <ol class="insight-summary__list" id="insight-action-list"></ol>
+      </section>
+
+      <section class="insight-summary" aria-labelledby="insight-plan-title">
+        <h3 id="insight-plan-title" class="insight-summary__title">향후 실행 계획</h3>
+        <ul class="insight-summary__list" id="insight-plan-list"></ul>
+      </section>
+    </main>
+  </div>
+
+  <!-- Third-party scripts -->
+  <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.10.3/jquery-ui.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+
+  <!-- Shared helpers -->
+  <script src="/cs/static/assets/gridCommon.js"></script>
+
+  <script>
+    (function () {
+      if (window.Chart && window.ChartDataLabels) {
+        window.Chart.register(window.ChartDataLabels);
+      }
+
+      var GC = window.gridCommon || {};
+      if (GC.highlightActiveNav) {
+        GC.highlightActiveNav(".sidebar__nav");
+      }
+      var fmt = GC.fmt || function (value) {
+        value = Number(value || 0);
+        if (isNaN(value)) return "";
+        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      };
+
+      var labelKorean = GC.labelKorean || function (ym) {
+        if (!ym) return "";
+        var parts = ym.split("-");
+        return parts[0] + "년 " + Number(parts[1]) + "월";
+      };
+
+      function safeDivide(numerator, denominator) {
+        if (!denominator) return 0;
+        return numerator / denominator;
+      }
+
+      var API_ENDPOINT = "/insights/lead-summary";
+      var TARGET_TABLETS = 400;
+
+      var FALLBACK_MONTHLY_DATA = [
+        { month: "2024-08", leads: 4446, opportunities: 33, contracts: 27, tablets: 355, discount: 820000 },
+        { month: "2024-09", leads: 5653, opportunities: 31, contracts: 25, tablets: 512, discount: 1130000 },
+        { month: "2024-10", leads: 3484, opportunities: 2, contracts: 0, tablets: 0, discount: 0 }
+      ];
+
+      var FALLBACK_SUMMARY = [
+        "AI 인사이트 생성에 실패했습니다. 기본 요약을 확인하세요.",
+        "8~9월 리드 수 대비 전환율 변화를 재점검하고, 고성과 채널을 우선 집중하세요."
+      ];
+
+      var FALLBACK_STRATEGIC = [
+        {
+          title: "① 전환율 복구",
+          bullets: [
+            "리드 분류 기준과 초기 콜 플로우를 점검해 전환 체계를 재정비하세요.",
+            "성과 상위 캠페인을 빠르게 재집중하고, 저성과 채널은 축소/중단 검토하세요."
+          ]
+        },
+        {
+          title: "② 단기 계약 가속",
+          bullets: [
+            "성사 가능성 높은 기회에 할인·지원 패키지를 제안하고 즉시 대응하세요."
+          ]
+        }
+      ];
+
+      var chartInstances = [];
+
+      function registerChart(instance) {
+        chartInstances.push(instance);
+        return instance;
+      }
+
+      function destroyCharts() {
+        chartInstances.forEach(function (chart) {
+          if (chart && typeof chart.destroy === "function") {
+            chart.destroy();
+          }
+        });
+        chartInstances = [];
+      }
+
+      function buildCharts(monthlyData) {
+        destroyCharts();
+
+        var months = monthlyData.map(function (row) {
+          return labelKorean(row.month);
+        });
+
+        var leadsSeries = monthlyData.map(function (row) { return row.leads; });
+        var opportunitySeries = monthlyData.map(function (row) { return row.opportunities; });
+        var contractSeries = monthlyData.map(function (row) { return row.contracts; });
+        var discountSeries = monthlyData.map(function (row) {
+          var v = row && (row.discount != null ? row.discount : row.totalDiscount);
+          return Number.isFinite(Number(v)) ? Number(v) : 0;
+        });
+        var tabletSeries = monthlyData.map(function (row) { return row.tablets; });
+        var conversionSeries = {
+          leadToOpportunity: monthlyData.map(function (row) {
+            return safeDivide(row.opportunities, row.leads) * 100;
+          }),
+          leadToContract: monthlyData.map(function (row) {
+            return safeDivide(row.contracts, row.leads) * 100;
+          }),
+          opportunityToContract: monthlyData.map(function (row) {
+            return safeDivide(row.contracts, row.opportunities) * 100;
+          })
+        };
+        var efficiencySeries = monthlyData.map(function (row) {
+          return safeDivide(row.tablets, row.contracts);
+        });
+        var tabletTargetSeries = monthlyData.map(function (_, idx) {
+          return idx === monthlyData.length - 1 ? TARGET_TABLETS : null;
+        });
+
+        function buildSingleBarChart(canvasId, label, data, color) {
+          registerChart(new Chart(document.getElementById(canvasId), {
+            type: "bar",
+            data: {
+              labels: months,
+              datasets: [
+                {
+                  label: label,
+                  data: data,
+                  backgroundColor: color
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false },
+                datalabels: {
+                  anchor: "end",
+                  align: "center",
+                  offset: 6,
+                  color: "#1f2937",
+                  font: { size: 12, weight: "600" },
+                  formatter: function (value) {
+                    return fmt(value);
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    callback: function (value) { return fmt(value); }
+                  }
+                }
+              }
+            }
+          }));
+        }
+
+        function buildConversionChart(canvasId, label, data, color) {
+          registerChart(new Chart(document.getElementById(canvasId), {
+            type: "line",
+            data: {
+              labels: months,
+              datasets: [
+                {
+                  label: label,
+                  data: data.map(function (value) {
+                    return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+                  }),
+                  borderColor: color,
+                  backgroundColor: color.replace("rgb", "rgba").replace(")", ", 0.15)"),
+                  tension: 0.35,
+                  fill: false,
+                  pointRadius: 3,
+                  pointHoverRadius: 4
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false },
+                datalabels: {
+                  anchor: "end",
+                  align: "center",
+                  offset: 6,
+                  color: "#1f2937",
+                  font: { size: 12, weight: "600" },
+                  formatter: function (value) {
+                    return Number.isFinite(value) ? value.toFixed(1) + "%" : "";
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    callback: function (value) {
+                      var out = typeof value === "number" && value.toFixed
+                        ? value.toFixed(0)
+                        : value;
+                      return out + "%";
+                    }
+                  }
+                }
+              }
+            }
+          }));
+        }
+
+        buildSingleBarChart("leadChart", "리드", leadsSeries, "rgba(67, 56, 202, 0.55)");
+        buildSingleBarChart("opportunityChart", "영업기회", opportunitySeries, "rgba(14, 165, 233, 0.6)");
+        buildSingleBarChart("contractChart", "계약", contractSeries, "rgba(34, 197, 94, 0.65)");
+        buildSingleBarChart("discountChart", "총 할인", discountSeries, "rgba(236, 72, 153, 0.6)");
+        buildConversionChart("conversionLeadOppChart", "리드→기회 전환율", conversionSeries.leadToOpportunity, "rgb(29, 78, 216)");
+        buildConversionChart("conversionLeadContractChart", "리드→계약 전환율", conversionSeries.leadToContract, "rgb(22, 163, 74)");
+        buildConversionChart("conversionOppContractChart", "기회→계약 전환율", conversionSeries.opportunityToContract, "rgb(249, 115, 22)");
+
+        registerChart(new Chart(document.getElementById("tabletChart"), {
+          type: "bar",
+          data: {
+            labels: months,
+            datasets: [
+              {
+                label: "테블릿 판매",
+                data: tabletSeries,
+                backgroundColor: "rgba(147, 197, 253, 0.75)",
+                datalabels: {
+                  anchor: "end",
+                  align: "end",
+                  color: "#1f2937",
+                  font: { size: 12, weight: "600" },
+                  formatter: function (value) { return fmt(value); }
+                }
+              },
+              {
+                label: "목표",
+                data: tabletTargetSeries,
+                type: "line",
+                borderColor: "#ef4444",
+                backgroundColor: "rgba(239, 68, 68, 0.25)",
+                borderWidth: 2,
+                spanGaps: true,
+                tension: 0.2,
+                fill: false,
+                datalabels: { display: false }
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: "bottom" },
+              tooltip: { enabled: false },
+                datalabels: {
+                  anchor: "end",
+                  align: "center",
+                  offset: 6,
+                  color: "#1f2937",
+                  font: { size: 12, weight: "600" },
+                  formatter: function (value, ctx) {
+                    if (ctx.datasetIndex === 0) {
+                      return fmt(value);
+                  }
+                  return "";
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: function (value) { return fmt(value); }
+                }
+              }
+            }
+          }
+        }));
+
+        registerChart(new Chart(document.getElementById("efficiencyChart"), {
+          type: "bar",
+          data: {
+            labels: months,
+            datasets: [
+              {
+                label: "계약당 테블릿",
+                data: efficiencySeries.map(function (value) {
+                  if (!isFinite(value)) return 0;
+                  return Number(value.toFixed(1));
+                }),
+                backgroundColor: "rgba(59, 130, 246, 0.65)",
+                datalabels: {
+                  anchor: "end",
+                  align: "center",
+                  offset: 6,
+                  color: "#1f2937",
+                  font: { size: 12, weight: "600" },
+                  formatter: function (value) { return value.toFixed(1); }
+                }
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: { enabled: false },
+              datalabels: {
+                anchor: "end",
+                align: "end",
+                color: "#1f2937",
+                font: { size: 12, weight: "600" },
+                formatter: function (value) { return value.toFixed(1); }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: function (value) { return value + "대"; }
+                }
+              }
+            }
+          }
+        }));
+      }
+
+      function renderSummary(list) {
+        var $list = $("#insight-action-list");
+        $list.empty();
+        var source = Array.isArray(list) && list.length ? list : FALLBACK_SUMMARY;
+        source.forEach(function (item) {
+          $("<li>").text(item).appendTo($list);
+        });
+      }
+
+      function renderStrategic(list) {
+        var $plan = $("#insight-plan-list");
+        $plan.empty();
+        var source = Array.isArray(list) && list.length ? list : FALLBACK_STRATEGIC;
+        source.forEach(function (item) {
+          var title = item.title || "";
+          var bullets = Array.isArray(item.bullets) && item.bullets.length
+            ? item.bullets
+            : (Array.isArray(item.points) ? item.points : []);
+          var $item = $("<li>");
+          $("<strong>").text("🔹 " + title).appendTo($item);
+          if (bullets.length) {
+            var $sub = $("<ul>").addClass("insight-summary__sublist");
+            bullets.forEach(function (text) {
+              $("<li>").text(text).appendTo($sub);
+            });
+            $item.append($sub);
+          }
+          $plan.append($item);
+        });
+      }
+
+      function updateStatus(message, type) {
+        var $status = $("#insightStatus");
+        $status.removeClass("insight-status--error insight-status--success");
+        if (type === "error") {
+          $status.addClass("insight-status--error");
+        } else if (type === "success") {
+          $status.addClass("insight-status--success");
+        }
+        $status.text(message);
+      }
+
+      function fetchInsights() {
+        return fetch(API_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetTablets: TARGET_TABLETS,
+            ownerDept: "아웃바운드세일즈"
+          })
+        }).then(function (resp) {
+          if (!resp.ok) {
+            throw new Error("서버 응답 오류: " + resp.status);
+          }
+          return resp.json();
+        });
+      }
+
+      function init() {
+        updateStatus("인사이트를 불러오는 중입니다...");
+        fetchInsights()
+          .then(function (payload) {
+            var monthlyData = (payload && payload.input && Array.isArray(payload.input.monthlyData))
+              ? payload.input.monthlyData
+              : FALLBACK_MONTHLY_DATA;
+
+            buildCharts(monthlyData);
+
+            var insight = payload && payload.insight ? payload.insight : null;
+
+            if (insight && Array.isArray(insight.highLevelSummary)) {
+              renderSummary(insight.highLevelSummary);
+            } else {
+              renderSummary(FALLBACK_SUMMARY);
+            }
+
+            if (insight && Array.isArray(insight.strategicActions)) {
+              renderStrategic(insight.strategicActions);
+            } else {
+              renderStrategic(FALLBACK_STRATEGIC);
+            }
+
+            var outlookComment = insight &&
+              insight.currentMonthOutlook &&
+              insight.currentMonthOutlook.commentary
+              ? insight.currentMonthOutlook.commentary
+              : "AI 인사이트 계산이 완료되었습니다.";
+
+            updateStatus(outlookComment, "success");
+          })
+          .catch(function (err) {
+            console.error("[lead-insights] AI fetch failed", err);
+            buildCharts(FALLBACK_MONTHLY_DATA);
+            renderSummary(FALLBACK_SUMMARY);
+            renderStrategic(FALLBACK_STRATEGIC);
+            updateStatus("AI 인사이트 생성에 실패했습니다. 기본 데이터를 표시합니다.", "error");
+          });
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
