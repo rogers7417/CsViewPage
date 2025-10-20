@@ -1,10 +1,11 @@
+require('dotenv').config();
+
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const axios = require('axios');
 const { fetchLatestSnapshot } = require('./services/snapshotStore');
 const { generateLeadSummaryInsight } = require('./services/leadSummaryInsight');
-require('dotenv').config();
 
 const app = express();
 
@@ -60,7 +61,7 @@ async function handleLeadSummary(req, res) {
     }
 }
 
-app.post('/cs/insights/lead-summary', handleLeadSummary);
+app.post('/insights/lead-summary', handleLeadSummary);
 app.post('/cs/insights/lead-summary', handleLeadSummary);
 
 function hasSnapshotAccess(req) {
