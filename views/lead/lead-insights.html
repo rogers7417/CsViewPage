@@ -271,8 +271,8 @@
         return numerator / denominator;
       }
 
-      var apiPrefix = (GC.API_BASE || "/cs/api").replace(/\/api\/?$/, "");
-      var API_ENDPOINT = apiPrefix + "/insights/lead-summary";
+      var API_BASE = "/cs/api";
+      var API_ENDPOINT = API_BASE + "/insights/lead-summary";
       var TARGET_TABLETS = 400;
 
       var FALLBACK_MONTHLY_DATA = [
