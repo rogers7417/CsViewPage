@@ -272,10 +272,8 @@
       }
 
       var apiPrefix = (GC.API_BASE || "").replace(/\/api\/?$/, "");
-      if (!apiPrefix) {
-        apiPrefix = "/cs";
-      }
-      var API_ENDPOINT = apiPrefix + "/insights/lead-summary";
+     
+      var API_ENDPOINT = apiPrefix + "/cs/insights/lead-summary";
       var TARGET_TABLETS = 400;
 
       var FALLBACK_MONTHLY_DATA = [
