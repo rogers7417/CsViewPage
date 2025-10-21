@@ -94,6 +94,23 @@
     .ui-jqgrid-btable tr.row-not-current-month td {
       background-color: #e6e6e6 !important;
     }
+    main.content {
+      position: relative;
+    }
+    .loading-overlay {
+      position: absolute;
+      top: 60px;
+      left: 0;
+      right: 0;
+      padding: 16px;
+      background: rgba(15, 23, 42, 0.85);
+      color: #e2e8f0;
+      text-align: center;
+      border-radius: 8px;
+      z-index: 10;
+      font-weight: 600;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -147,6 +164,7 @@
 
       <table id="contracts"></table>
       <div id="contracts-pager"></div>
+      <div id="loadingOverlay" class="loading-overlay">데이터를 불러오는 중입니다…</div>
     </main>
   </div>
 
@@ -560,18 +578,28 @@
       $("#title").text("조회: " + labelKorean(ym) + (dept ? (" / " + dept) : ""));
       var params = { month: ym };
       if (dept) params.ownerDept = dept;
+      setLoading(true);
       $.getJSON(API_BASE + "/contracts", params, function (contracts) {
         var rows = prepareContracts(Array.isArray(contracts) ? contracts : [], ym);
         buildGrid(rows);
+        currentContracts = rows.slice();
         updateTitle(rows, ym, dept);
       }).fail(function (xhr) {
         alert("데이터 로딩 실패: " + (xhr && xhr.status));
+      }).always(function () {
+        setLoading(false);
       });
+    }
+
+    function setLoading(flag) {
+      $("#loadingOverlay").toggle(flag);
+      $("#loadBtn, #prevBtn, #nextBtn, #ownerDept, #groupBy, #month").prop("disabled", flag);
     }
 
     $(function () {
       var d = new Date(); d.setDate(1); var ym = d.toISOString().slice(0, 7);
       $("#month").val(ym);
+      $("#ownerDept").val("아웃바운드세일즈");
 
       $("#loadBtn").on("click", loadContracts);
       $("#prevBtn").on("click", function () {
