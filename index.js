@@ -3,9 +3,9 @@ require('dotenv').config();
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const path = require('path');
-const axios = require('axios');
 const { fetchLatestSnapshot } = require('./services/snapshotStore');
 const { generateLeadSummaryInsight } = require('./services/leadSummaryInsight');
+const { getContracts } = require('./services/contractService');
 const { getToken } = require('./services/salesforceSession');
 
 const app = express();
@@ -17,29 +17,29 @@ app.use((req, res, next) => {
 });
 const csRouter = require('./routes/cs');
 
-const apiBase = process.env.API_SERVER_URL || process.env.API_BASE_URL || 'http://localhost:4000';
-const apiClient = axios.create({
-    baseURL: apiBase.endsWith('/') ? apiBase : `${apiBase}/`,
-    timeout: 30000,
-});
-
 app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
-app.use('/cs', csRouter);
 app.use('/cs/static', express.static(path.join(__dirname, 'views')));
 
-// Proxy endpoints to align with API server routes.
-app.get('/cs/contracts', async (req, res) => {
+async function handleContracts(req, res) {
     try {
-        const { data } = await apiClient.get('contracts', { params: req.query });
-        res.json(data);
+        const token = getToken();
+        if (!token?.access_token || !token?.instance_url) {
+            return res.status(401).json({ error: 'Salesforce authentication required' });
+        }
+        const list = await getContracts(req.query || {}, token);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.status(200).json(list);
     } catch (err) {
-        const status = err.response?.status || 500;
-        const payload = err.response?.data || { error: 'Failed to fetch contracts' };
-        console.error('GET /contracts proxy error', err.message || err);
-        res.status(status).json(payload);
+        const status = err.status || err.response?.status || 500;
+        const message = err.message || err.response?.data || 'Failed to fetch contracts';
+        console.error('GET /contracts error', { message, code: err.code, status });
+        if (err.response?.data) {
+            console.error('GET /contracts error payload', err.response.data);
+        }
+        res.status(status).json({ error: message, code: err.code || 'UNEXPECTED' });
     }
-});
+}
 
 async function handleLeadSummary(req, res) {
     try {
@@ -67,8 +67,12 @@ async function handleLeadSummary(req, res) {
     }
 }
 
-app.post('/insights/lead-summary', handleLeadSummary);
+// app.post('/insights/lead-summary', handleLeadSummary);
 app.post('/cs/insights/lead-summary', handleLeadSummary);
+// app.get('/contracts', handleContracts);
+app.get('/cs/contracts', handleContracts);
+
+app.use('/cs', csRouter);
 
 function hasSnapshotAccess(req) {
     if (req.cookies?.sf_logged_in === '1') return true;
@@ -102,7 +106,7 @@ async function handleSnapshotRequest(req, res) {
     }
 }
 
-app.get('/snapshot/latest', handleSnapshotRequest);
+// app.get('/snapshot/latest', handleSnapshotRequest);
 app.get('/cs/snapshot/latest', handleSnapshotRequest);
 
 app.listen(3003, () => {
