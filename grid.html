@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Contracts (동적 month + ownerDept)</title>
+
+    <!-- jQuery UI theme + jqGrid CSS -->
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.14/themes/redmond/jquery-ui.css"
+        type="text/css" />
+    <link rel="stylesheet" href="//cdn.jsdelivr.net/jqgrid/4.6.0/css/ui.jqgrid.css" type="text/css" />
+
+    <style>
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            font-family: Arial, Apple SD Gothic Neo, "맑은 고딕", sans-serif;
+            margin: 20px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .toolbar label {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .toolbar input[type="month"],
+        .toolbar select {
+            padding: 6px 8px;
+        }
+
+        .toolbar button {
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
+        .detail-row-products td,
+        .detail-row-promotions td {
+            background: #fafafa;
+            padding: 12px 16px !important;
+        }
+
+        .detail-wrap {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .detail-title {
+            margin: 0 0 8px;
+            font-weight: 700;
+        }
+
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .detail-table th,
+        .detail-table td {
+            border-bottom: 1px solid #eee;
+            padding: 6px 8px;
+            text-align: right;
+        }
+
+        .detail-table th:nth-child(1),
+        .detail-table td:nth-child(1),
+        .detail-table th:nth-child(2),
+        .detail-table td:nth-child(2) {
+            text-align: left;
+        }
+
+        .clickable {
+            color: #1565c0;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .highlight-col {
+            background-color: #fff8b3;
+            font-weight: bold;
+        }
+
+        .highlight2-col {
+            background-color: #e6fff0;
+            font-weight: bold;
+        }
+
+        /* Close Won 이 아닌 행 색상 */
+        .ui-jqgrid-btable tr.row-not-closed td {
+            background-color: #ffecec !important;
+            /* 연한 빨강 */
+            /* color: #a60000;  텍스트 색상 강조 원하면 */
+        }
+
+        /* 이번 달 생성이 아닌 기회 */
+        .ui-jqgrid-btable tr.row-not-current-month td {
+            background-color: #e6e6e6 !important;
+            /* 연회색 */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <label for="month">월 선택:</label>
+        <input type="month" id="month" />
+        <label for="groupBy">그룹 기준:</label>
+        <select id="groupBy">
+            <option value="ownerNameFlat">담당자</option>
+            <option value="FieldUser">필드담당자</option>
+            <option value="BOUser">BO 담당자</option>
+            <option value="ownerDeptFlat">부서</option>
+            <option value="leadSource">리드 소스</option>
+            <option value="recordTypeName">레코드 타입</option>
+        </select>
+        <label for="ownerDept">부서:</label>
+        <select id="ownerDept">
+            <option value="">전체</option>
+            <option value="아웃바운드세일즈">아웃바운드세일즈</option>
+            <option value="인바운드세일즈">인바운드세일즈</option>
+            <option value="채널세일즈팀">채널세일즈팀</option>
+            <option value="리텐션">리텐션</option>
+        </select>
+
+        <button id="prevBtn">◀ 이전달</button>
+        <button id="nextBtn">다음달 ▶</button>
+        <button id="loadBtn">불러오기</button>
+        <button id="expandGroupsBtn">그룹 모두 펼치기</button>
+        <button id="collapseGroupsBtn">그룹 모두 접기</button>
+        <span id="title" style="margin-left:auto;font-weight:600;"></span>
+    </div>
+
+    <table id="contracts"></table>
+    <div id="contracts-pager"></div>
+
+    <!-- jQuery / UI / jqGrid -->
+    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.10.3/jquery-ui.min.js"></script>
+    <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/i18n/grid.locale-kr.js"></script>
+    <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/jquery.jqGrid.src.js"></script>
+
+    <script>
+        $.jgrid = $.jgrid || {}; $.jgrid.no_legacy_api = true; $.jgrid.useJSON = true;
+
+        // 🔧 서버 주소
+        var API_BASE = "http://localhost:4000";
+
+        // 숫자 콤마
+        function fmt(n) { n = Number(n || 0); return isNaN(n) ? "" : n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+
+        // YYYY-MM ⇄ 표시 라벨
+        function labelKorean(ym) { var a = ym.split("-"); return a[0] + "년 " + Number(a[1]) + "월"; }
+        function addMonths(ym, delta) {
+            var a = ym.split("-").map(Number); var d = new Date(Date.UTC(a[0], a[1] - 1, 1));
+            d.setUTCMonth(d.getUTCMonth() + delta); return d.toISOString().slice(0, 7);
+        }
+        // 그룹(담당자) 전체 토글
+        function toggleAllGroups(expand) {
+            var $btable = $("#contracts")[0].grid && $("#contracts")[0].grid.bDiv
+                ? $($("#contracts")[0].grid.bDiv).find("table.ui-jqgrid-btable")
+                : $("#contracts");
+
+            $btable.find("tr.jqgroup").each(function () {
+                var $icon = $("span.ui-icon", this);
+                var isCollapsed = $icon.hasClass("ui-icon-circlesmall-plus");   // 닫힘(+ 아이콘)
+                var isExpanded = $icon.hasClass("ui-icon-circlesmall-minus");  // 열림(- 아이콘)
+
+                if (expand && isCollapsed) {
+                    $icon.trigger("click");     // 모두 펼치기: 닫힌 것만 클릭
+                } else if (!expand && isExpanded) {
+                    $icon.trigger("click");     // 모두 접기: 열린 것만 클릭
+                }
+            });
+        }
+        //평균 값 구하기 
+        function calcAvg(contracts, field) {
+            const nums = contracts.map(c => Number(c[field])).filter(n => Number.isFinite(n));
+            if (!nums.length) return null;
+            return nums.reduce((a, b) => a + b, 0) / nums.length;
+        }
+        // 화면 맞춤
+        function resizeMainGrid() {
+            var $grid = $("#contracts"); if ($grid.length === 0) return;
+            var top = $grid.offset().top || 0, vh = $(window).height() || 0, bottom = 30;
+            $grid.jqGrid("setGridHeight", Math.max(200, vh - top - bottom));
+            var newW = $grid.closest(".ui-jqgrid").parent().width(); if (newW) $grid.jqGrid("setGridWidth", newW);
+        }
+
+        // 상세(Products / Promotions) 렌더
+        function renderProductsHTML(products) {
+            var html = '<div class="detail-wrap"><p class="detail-title">Products 상세</p>' +
+                '<table class="detail-table"><thead><tr>' +
+                '<th>Product Id</th><th>제품군</th><th>수량</th><th>기준단가</th><th>실단가</th><th>옵션</th><th>라인합계</th>' +
+                '</tr></thead><tbody>';
+            for (var i = 0; i < products.length; i++) {
+                var p = products[i] || {}, qty = Number(p.quantity || 0), unit = Number(p.totalPrice || 0);
+                var opt = ($.isArray(p.option) && p.option[0] && p.option[0].hasOption) ? ("+" + fmt(p.option[0].optionExtraTotal) + "/ea") : "";
+                html += '<tr>' +
+                    '<td>' + (p.id || "") + '</td>' +
+                    '<td>' + (p.family || "") + '</td>' +
+                    '<td>' + fmt(qty) + '</td>' +
+                    '<td>' + fmt(p.unitPrice) + '</td>' +
+                    '<td>' + fmt(unit) + '</td>' +
+                    '<td style="text-align:left">' + opt + '</td>' +
+                    '<td>' + fmt(qty * unit) + '</td>' +
+                    '</tr>';
+            }
+            html += '</tbody></table></div>'; return html;
+        }
+        function renderPromotionsHTML(promotions) {
+            var html = '<div class="detail-wrap"><p class="detail-title">Promotions 상세</p>' +
+                '<table class="detail-table"><thead><tr>' +
+                '<th>Promotion Id</th><th>프로모션명</th><th>금액</th><th>출처</th>' +
+                '</tr></thead><tbody>';
+            for (var j = 0; j < promotions.length; j++) {
+                var pr = promotions[j] || {};
+                html += '<tr>' +
+                    '<td>' + (pr.id || "") + '</td>' +
+                    '<td>' + (pr.promotionName || "") + '</td>' +
+                    '<td>' + fmt(pr.totalAmount) + '</td>' +
+                    '<td style="text-transform:capitalize">' + (pr._source || "") + '</td>' +
+                    '</tr>';
+            }
+            html += '</tbody></table></div>'; return html;
+        }
+        function toggleDetailRow(rowid, dataset, type) {
+            var $grid = $("#contracts");
+            var $mainTr = $("#" + rowid, $grid[0].grid && $grid[0].grid.bDiv);
+            if ($mainTr.length === 0) { $mainTr = $("#" + $.jgrid.jqID(rowid)); }
+            var cls = (type === 'products') ? 'detail-row-products' : 'detail-row-promotions';
+            var $nextSame = $mainTr.next("." + cls);
+            if ($nextSame.length) { $nextSame.remove(); return; }
+            var raw = null; for (var i = 0; i < dataset.length; i++) { if (dataset[i].id === rowid) { raw = dataset[i]; break; } }
+            var colspan = $mainTr.children("td:visible").length;
+            var inner = (type === 'products') ? renderProductsHTML(raw.products || []) : renderPromotionsHTML(raw.promotions || []);
+            $('<tr class="' + cls + '"><td colspan="' + colspan + '">' + inner + '</td></tr>').insertAfter($mainTr);
+        }
+
+        function isSelectedMonth(isoDateStr) {
+            if (!isoDateStr) return false;
+
+            // 화면에서 선택된 YYYY-MM 값
+            var selectedYm = $("#month").val(); // 예: "2025-09"
+            if (!selectedYm) return false;
+
+            // isoDateStr 앞 7자리만 추출 ("2025-09")
+            var recordYm = isoDateStr.substring(0, 7);
+
+            return recordYm === selectedYm;
+        }
+        // jqGrid 생성
+        function buildGrid(contracts, initialGroupField) {
+
+            if ($("#contracts")[0].grid) { $("#contracts").GridUnload(); }
+
+            for (var i = 0; i < contracts.length; i++) {
+                var c = contracts[i] || {};
+                c.opportunity = c.opportunity || {};
+
+                c.leadCreatedDate = c.lead?.createdDate || '';
+                c.leadCompany = c.lead?.company || '';
+                c.leadSource = c.lead?.leadSource || '';
+                c.leadUtm = c.lead?.utm || '';
+                c.leadUtmSource = c.lead?.utmSource || '';
+                c.leadUtmContent = c.lead?.utmContent || '';
+                c.leadUtmTerm = c.lead?.utmTerm || '';
+                c.opportunityLeadSource = c.leadSourceOpportunity || c.opportunity.leadSource || '';
+                c.fmSido = c.fmSido || c.opportunity.fmSido || '';
+                c.fmSigugun = c.fmSigugun || c.opportunity.fmSigugun || '';
+                c.fmStoreType = c.fmStoreType || c.opportunity.fmStoreType || '';
+                c.plIndustryFirst = c.plIndustryFirst || c.opportunity.plIndustryFirst || '';
+                c.plIndustrySecond = c.plIndustrySecond || c.opportunity.plIndustrySecond || '';
+                c.typeOfBusiness = c.typeOfBusiness || c.opportunity.typeOfBusiness || '';
+                c.recordTypeName = c.recordTypeName || '(알 수 없음)';
+                c.stageNameFlat = (c.opportunity && c.opportunity.stageName) || '';
+                // 리드→기회 소요일(객체 → 숫자/사유)
+                c.leadToOpportunityDays = (c.leadToOpportunity && Number.isFinite(c.leadToOpportunity.days)) ? c.leadToOpportunity.days : null;
+                c.leadToOpportunityReason = c.leadToOpportunity ? c.leadToOpportunity.reason : null;
+
+                c.opportunityCreatedDate = c.opportunity.createdDate || '';
+                // 널-세이프 기본값들
+                c.name = c.name || '';
+                c.FieldUser = c.FieldUser || '';
+                c.BOUser = c.BOUser || '';
+                c.opportunityAccountName = c.opportunity.accountName || '';
+                c.opportunityAccountBranchName = c.opportunity.accountBranchName || '';
+                c.accountName = c.accountName || '';
+                c.accountBranchName = c.accountBranchName || '';
+                c.ownerNameFlat = c.opportunity.ownerName || '';
+                c.ownerDeptFlat = c.opportunity.ownerDepartment || '';
+
+                c.contractDateStart = c.contractDateStart || '';
+                c.contractDateEnd = c.contractDateEnd || '';
+                c.contractStatus = c.contractStatus || '';
+
+                // 숫자 기본값
+                c.TotalNumberofEveryTablet__c = Number(c.TotalNumberofEveryTablet__c || 0);
+                c.productsTotal = Number(c.productsTotal || 0);
+                c.promotionsFromProductsTotal = Number(c.promotionsFromProductsTotal || 0);
+                c.purchaseAmount = Number(c.purchaseAmount || 0);
+                c.vat = Number(c.vat || 0);
+                c.totalWithVat = Number(c.totalWithVat || 0);
+                c.totalDiscount = Number(c.totalDiscount || 0);
+
+                // 배열 기본값
+                c.products = Array.isArray(c.products) ? c.products : [];
+                c.promotions = Array.isArray(c.promotions) ? c.promotions : [];
+
+
+                c.leadTimeDays = (c.leadTime && Number.isFinite(c.leadTime.days)) ? c.leadTime.days : null;
+                c.leadTimeReason = c.leadTime ? c.leadTime.reason : null;
+
+                c.prevToFirstCloseDays = (c.prevToFirstClose && Number.isFinite(c.prevToFirstClose.days))
+                    ? c.prevToFirstClose.days
+                    : null;
+
+                c.prevToFirstCloseReason = c.prevToFirstClose
+                    ? c.prevToFirstClose.reason
+                    : null;
+
+            }
+
+            // 라벨 맵 (그룹 텍스트에 사용)
+            var labelMap = {
+                ownerNameFlat: "담당자",
+                FieldUser: "필드담당자",
+                BOUser: "BO 담당자",
+                ownerDeptFlat: "부서",
+                recordTypeName: "레코드 타입"
+            };
+            var groupField = initialGroupField || "ownerNameFlat";
+
+            const leadToOppAvg = calcAvg(contracts, "leadToOpportunityDays");
+
+            const leadTimeAvg = calcAvg(contracts, "leadTimeDays");
+            const installAvg = calcAvg(contracts, "prevToFirstCloseDays");
+            $("#contracts").jqGrid({
+                datatype: "local",
+                data: contracts,
+                colNames: [
+                    "d", "Opp 생성일(원본)", "Contract Id", "리드 Company", "리드 소스", "리드 UTM", "UTM Source", "UTM Content", "UTM Term", "기회 고객명", "기회 지점명", "업종(대)", "업종(중)", "업태", "기회 리드 소스", "시/도", "시/군/구", "매장 유형", "리드→기회(일)", "계약 소요일", "설치 확정 소요일","레코드유형", "필드담당자", "BO 담당자", "상호명", "지점명", "상태",
+                    "계약시작일", "계약종료일", "담당자", "계약태블릿수",
+                    "상품합계", "상품할인합계", "구매가", "부가세", "합계(부가세포함)",
+                    "네이티브프로모션", "총할인",
+                    "부서" // 숨김
+                ],
+                colModel: [
+                    { name: "stageNameFlat", hidden: true },
+                    { name: "opportunityCreatedDate", hidden: true },
+                    { name: "id", width: 130, key: true, hidden: true },
+                    { name: "leadCompany", width: 80 },
+
+                    // LeadSource
+                    { name: "leadSource", width: 80, align: "center" },
+                    { name: "leadUtm", width: 110, align: "center" },
+                    { name: "leadUtmSource", width: 110, align: "center" },
+                    { name: "leadUtmContent", width: 140, align: "center" },
+                    { name: "leadUtmTerm", width: 120, align: "center" },
+                    { name: "opportunityAccountName", width: 120, align: "center" },
+                    { name: "opportunityAccountBranchName", width: 110, align: "center" },
+                    { name: "plIndustryFirst", width: 100, align: "center" },
+                    { name: "plIndustrySecond", width: 110, align: "center" },
+                    { name: "typeOfBusiness", width: 90, align: "center" },
+                    { name: "opportunityLeadSource", width: 100, align: "center" },
+                    { name: "fmSido", width: 80, align: "center" },
+                    { name: "fmSigugun", width: 90, align: "center" },
+                    { name: "fmStoreType", width: 100, align: "center" },
+
+                    // 리드→기회 소요일 (평균 대비 색상)
+                    {
+                        name: "leadToOpportunityDays", width: 80, align: "right", sorttype: "number",
+                        formatter: function (cell, opts, row) {
+                            if (Number.isFinite(cell)) {
+                                // 평균 대비 색상 (작을수록 빠름 → 파랑, 클수록 느림 → 빨강)
+                                var color = "";
+                                if (leadToOppAvg != null) {
+                                    if (cell > leadToOppAvg) color = "red";
+                                    else if (cell < leadToOppAvg) color = "blue";
+                                }
+                                // reason이 ok면 숫자, 아니면 기호
+                                return '<span title="평균: ' + (leadToOppAvg?.toFixed?.(1) ?? '-') + '" style="color:' + color + '">' +
+                                    cell.toLocaleString() + '</span>';
+                            }
+                            if (row.leadToOpportunityReason === "missing-date") return '<span title="날짜 없음">—</span>';
+                            if (row.leadToOpportunityReason === "parse-error") return '<span title="파싱 오류">!</span>';
+                            return "";
+                        },
+                        summaryType: "avg" // 평균 요약(버전에 따라 동작). 필요시 커스텀 avg로 교체 가능
+                    },
+                    {
+                        name: "leadTimeDays", width: 80, align: "right", sorttype: "number",
+
+                        formatter: function (cell, opts, row) {
+                            if (row.leadTimeReason === "missing-date") return '<span title="날짜 없음">날짜 없음</span>';
+                            if (row.leadTimeReason === "parse-error") return '<span title="날짜 파싱 오류">!</span>';
+                            if (!Number.isFinite(cell)) return "";
+                            let color = "";
+
+                            if (leadTimeAvg != null) {
+                                if (cell > leadTimeAvg) color = "red";      // 평균보다 크면 빨강
+                                else if (cell < leadTimeAvg) color = "blue"; // 평균보다 작으면 파랑
+                            }
+                            return `<span style="color:${color}">${cell.toLocaleString()}</span>`;
+                        },
+                        summaryType: "avg"
+                    },
+                    {
+                        name: "prevToFirstCloseDays", width: 80, align: "right", sorttype: "number",
+                        formatter: function (cell, opts, row) {
+                            if (row.prevToFirstCloseReason === "missing-date") return '<span title="날짜 없음">날짜 없음</span>';
+                            if (row.prevToFirstCloseReason === "parse-error") return '<span title="날짜 파싱 오류">!</span>';
+                            if (!Number.isFinite(cell)) return "";
+                            let color = "";
+                            if (installAvg != null) {
+                                if (cell > installAvg) color = "red";
+                                else if (cell < installAvg) color = "blue";
+                            }
+                            return `<span style="color:${color}">${cell.toLocaleString()}</span>`;
+                        },
+                        summaryType: "avg"
+                    },
+                    { name: "recordTypeName", label: "레코드 타입", width: 140, align: "center" },
+                    { name: "FieldUser", width: 80, align: "center" },
+                    { name: "BOUser", width: 80, align: "center" },
+                    { name: "accountName", width: 100, align: "center" },
+                    { name: "accountBranchName", width: 80, align: "center" },
+                    { name: "contractStatus", width: 110, align: "center" },
+                    { name: "contractDateStart", width: 100, align: "center" },
+                    { name: "contractDateEnd", width: 100, align: "center" },
+                    { name: "ownerNameFlat", width: 80, align: "center" },
+
+                    {
+                        name: "TotalNumberofEveryTablet__c",
+                        width: 110,
+                        align: "right",
+                        formatter: "number",
+                        formatoptions: { thousandsSeparator: ",", decimalPlaces: 0 },
+                        summaryType: "sum",                         // 그룹 합계 계산
+                        summaryTpl: "태블릿 합계: {0}",             // 그룹 헤더에 표시
+                        classes: "highlight-col"
+                    },
+                    {
+                        name: "productsTotal", width: 120, align: "right",
+                        formatter: function (cell, opts, row) {
+                            var val = fmt(cell);
+                            return '<a href="#" class="clickable prod-toggle" data-rowid="' + (row.id || opts.rowId) + '">' + val + '</a>';
+                        },
+                        summaryType: "sum"
+                    },
+                    {
+                        name: "promotionsFromProductsTotal", width: 130, align: "right",
+                        formatter: "number", formatoptions: { thousandsSeparator: ",", decimalPlaces: 0 }, summaryType: "sum"
+                    },
+                    {
+                        name: "purchaseAmount", width: 130, align: "right",
+                        formatter: "number", formatoptions: { thousandsSeparator: ",", decimalPlaces: 0 }, summaryType: "sum"
+                    },
+                    {
+                        name: "vat", width: 90, align: "right",
+                        formatter: "number", formatoptions: { thousandsSeparator: ",", decimalPlaces: 0 }, summaryType: "sum"
+                    },
+                    {
+                        name: "totalWithVat", width: 120, align: "right",
+                        formatter: "number", formatoptions: { thousandsSeparator: ",", decimalPlaces: 0 }, summaryType: "sum",
+                        classes: "highlight2-col"
+                    },
+                    {
+                        name: "promotionsNativeTotal", width: 120, align: "right",
+                        formatter: "number", formatoptions: { thousandsSeparator: ",", decimalPlaces: 0 }, summaryType: "sum"
+                    },
+                    {
+                        name: "totalDiscount", width: 120, align: "right",
+                        formatter: function (cell, opts, row) {
+                            var val = fmt(cell);
+                            return '<a href="#" class="clickable promo-toggle" data-rowid="' + (row.id || opts.rowId) + '">' + val + '</a>';
+                        },
+                        summaryType: "sum"
+                    },
+
+                    { name: "ownerDeptFlat", hidden: true }
+                ],
+                loadComplete: function () {
+                    const $grid = $("#contracts");
+                    const ids = $grid.jqGrid('getDataIDs');
+
+                    function norm(s) { return String(s || '').toLowerCase().replace(/\s+/g, ''); }
+                    const closedWonSet = new Set(['closedwon', '계약완료', '계약 완료'].map(norm));
+
+                    for (let i = 0; i < ids.length; i++) {
+                        const id = ids[i];
+                        const stage = $grid.jqGrid('getCell', id, 'stageNameFlat');
+                        const createdDate = $grid.jqGrid('getCell', id, 'opportunityCreatedDate');
+
+                        if (!closedWonSet.has(norm(stage))) {
+                            $("#" + $.jgrid.jqID(id)).addClass("row-not-closed");
+                        }
+                        if (!isSelectedMonth(createdDate)) {
+                            $("#" + $.jgrid.jqID(id)).addClass("row-not-current-month");
+                        }
+                    }
+                    const totalTablets = $grid.jqGrid('getCol', 'TotalNumberofEveryTablet__c', false, 'sum');
+                    $grid.jqGrid('footerData', 'set', {
+                        ownerNameFlat: '총 합계',
+                        TotalNumberofEveryTablet__c: totalTablets
+                    });
+                },
+                pager: "#contracts-pager",
+                rowNum: 1000, rowList: [20, 50, 1000],
+                viewrecords: true, autowidth: true, shrinkToFit: false, height: 400,
+
+                grouping: true,
+                groupingView: {
+                    groupField: [groupField],
+                    groupColumnShow: [true],
+                    groupText: [labelMap[groupField] + ": <b>{0}</b> <span style='color:#888'>( {1} 건 )</span>"],
+                    groupOrder: ["asc"],
+                    groupSummary: [true],
+                    groupSummaryPos: ["footer"]
+                },
+
+                subGrid: false,
+                footerrow: true,
+                userDataOnFooter: true
+            });
+
+            $("#contracts").jqGrid('setGroupHeaders', {
+                useColSpanStyle: true,
+                groupHeaders: [
+                    { startColumnName: "leadCompany", numberOfColumns: 6, titleText: "<span>리드 정보</span>" },
+                    { startColumnName: "opportunityAccountName", numberOfColumns: 5, titleText: "<span>고객 정보</span>" },
+                    { startColumnName: "opportunityLeadSource", numberOfColumns: 10, titleText: "<span>영업 기회 정보</span>" },
+                    { startColumnName: "accountName", numberOfColumns: 14, titleText: "<span>계약 정보</span>" }
+                ]
+            });
+
+            // 상세 토글 핸들러 유지
+            $("#contracts").off("click", ".prod-toggle").on("click", ".prod-toggle", function (e) {
+                e.preventDefault(); toggleDetailRow($(this).data("rowid"), contracts, 'products');
+            });
+            $("#contracts").off("click", ".promo-toggle").on("click", ".promo-toggle", function (e) {
+                e.preventDefault(); toggleDetailRow($(this).data("rowid"), contracts, 'promotions');
+            });
+
+            resizeMainGrid();
+        }
+        $("#expandGroupsBtn").on("click", function () { toggleAllGroups(true); });
+        $("#collapseGroupsBtn").on("click", function () { toggleAllGroups(false); });
+        // 데이터 로드
+        function loadContracts() {
+            var ym = $("#month").val();                 // YYYY-MM
+            var dept = $("#ownerDept").val();           // 부서
+            $("#title").text("조회: " + labelKorean(ym) + (dept ? (" / " + dept) : ""));
+
+            var params = { month: ym };
+            if (dept) params.ownerDept = dept;
+
+            $.getJSON(API_BASE + "/contracts", params, function (contracts) {
+                buildGrid(contracts);
+            }).fail(function (xhr) {
+                alert("데이터 로딩 실패: " + (xhr && xhr.status));
+            });
+        }
+
+        // 초기 셋업
+        $(function () {
+            // 기본 월: 오늘 기준 지난달
+            var d = new Date(); d.setDate(1); d.setMonth(d.getMonth());
+            var ym = d.toISOString().slice(0, 7);
+            $("#month").val(ym);
+
+
+            // 핸들러
+            $("#loadBtn").on("click", loadContracts);
+            $("#prevBtn").on("click", function () {
+                $("#month").val(addMonths($("#month").val(), -1)); loadContracts();
+            });
+            $("#nextBtn").on("click", function () {
+                $("#month").val(addMonths($("#month").val(), +1)); loadContracts();
+            });
+            $("#ownerDept").on("change", loadContracts);
+            $("#month").on("change", loadContracts);
+
+            var labelMap = {
+                ownerNameFlat: "담당자",
+                FieldUser: "필드담당자",
+                BOUser: "BO 담당자",
+                ownerDeptFlat: "부서"
+            };
+
+            // 기본 그룹은 '담당자'
+            $("#groupBy").val("ownerNameFlat");
+
+            // 그룹 기준 변경 시 즉시 반영
+            $("#groupBy").on("change", function () {
+                var field = $(this).val();
+                $("#contracts").jqGrid('groupingGroupBy', field, {
+                    groupText: [labelMap[field] + ": <b>{0}</b> <span style=\"color:#888\">( {1} 건 )</span>"],
+                    groupOrder: ["asc"],
+                    groupColumnShow: [true],
+                    groupSummary: [true],
+                    groupSummaryPos: ["footer"]
+                });
+            });
+            // 최초 로드
+            loadContracts();
+
+            // 리사이즈
+            $(window).on("resize.jqGrid", resizeMainGrid);
+        });
+    </script>
+</body>
+
+</html>
