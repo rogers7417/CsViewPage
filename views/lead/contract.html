@@ -419,7 +419,7 @@
       $("#title").text("조회중…");
       var params = { month: ym };
       if (dept) params.ownerDept = dept;
-      return $.getJSON(API_BASE + "/cs/contracts", params)
+      return $.getJSON(API_BASE + "/contracts", params)
         .done(function (list) {
           var rows = prepareRows(Array.isArray(list) ? list : [], ym);
           buildGrid(rows);
