@@ -222,6 +222,13 @@
 
       function refreshGridData(rows) {
         var $grid = $('#taskGrid');
+        if (!$grid.length) return;
+
+        if (!gridInitialized) {
+          buildGrid(rows);
+          return;
+        }
+
         $grid.jqGrid('clearGridData');
         for (var i = 0; i < rows.length; i++) {
           $grid.jqGrid('addRowData', i + 1, rows[i]);
@@ -325,7 +332,8 @@
         refreshGridData(rows);
       }
 
-      function loadData() {
+      function loadData(options) {
+        options = options || {};
         if (!API_BASE) {
           alert('API 주소를 확인하세요.');
           return;
@@ -346,7 +354,9 @@
           });
       }
 
-      document.getElementById('refreshBtn').addEventListener('click', loadData);
+      document.getElementById('refreshBtn').addEventListener('click', function () {
+        loadData({ gridOnly: true });
+      });
 
       var groupSelectEl = document.getElementById('groupSelect');
       if (groupSelectEl) {
@@ -377,6 +387,15 @@
           }
         });
       }
+
+      window.outboundTaskView = {
+        refresh: function () {
+          loadData({ gridOnly: true });
+        },
+        reloadAll: function () {
+          loadData();
+        }
+      };
 
       loadData();
     })();
