@@ -7,6 +7,7 @@ const { randomUUID } = require('crypto');
 const { createClient } = require('redis');
 const { MongoClient } = require('mongodb');
 const OpenAI = require('openai');
+const { getToken: getSalesforceSessionToken } = require('./services/salesforceSession');
 
 const app = express();
 app.use(cors());
@@ -23,6 +24,20 @@ function log(level, message, meta = {}) {
     if (level === 'error') console.error(line);
     else if (level === 'warn') console.warn(line);
     else console.log(line);
+}
+
+function requireSalesforceSession(res) {
+    const token = getSalesforceSessionToken();
+    if (!token?.access_token || !token?.instance_url) {
+        if (res) {
+            res.status(401).json({ error: 'Salesforce authentication required' });
+        }
+        return null;
+    }
+    return {
+        accessToken: token.access_token,
+        instanceUrl: token.instance_url,
+    };
 }
 
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
@@ -1600,7 +1615,12 @@ app.get('/stores/by-brand', async (req, res) => {
 app.get('/tasks/outbound-sensitivity', async (req, res) => {
     try {
         log('info', 'GET /tasks/outbound-sensitivity start');
-        const { accessToken, instanceUrl } = await getSalesforceToken();
+        const session = requireSalesforceSession(res);
+        if (!session) {
+            log('warn', 'GET /tasks/outbound-sensitivity unauthorized');
+            return;
+        }
+        const { accessToken, instanceUrl } = session;
 
         const searchTerm = '영업 AND 감도 AND (상) OR (중) ';
         const sosl = [
