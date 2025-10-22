@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>감도 Task 모니터링</title>
+  <link rel="stylesheet" href="/cs/static/assets/common.css" type="text/css" />
+  <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.14/themes/redmond/jquery-ui.css" type="text/css" />
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/jqgrid/4.6.0/css/ui.jqgrid.css" type="text/css" />
+  <style>
+    .summary-card {
+      margin-bottom: 16px;
+      padding: 8px 12px;
+      border: 1px solid #e5e9f3;
+      border-radius: 4px;
+      background: #f9fcff;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+    .summary-card__item {
+      min-width: 180px;
+    }
+    .summary-card__label {
+      display: block;
+      color: #64748b;
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .summary-card__value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .toolbar button {
+      padding: 6px 10px;
+      border: 1px solid #d0d7e6;
+      border-radius: 4px;
+      background: #eff3fb;
+      cursor: pointer;
+    }
+    .toolbar button:hover {
+      background: #dce6ff;
+    }
+    .table-wrapper {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #fff;
+      padding: 8px;
+      overflow: auto;
+      max-height: calc(100vh - 220px);
+    }
+    .description-cell {
+      white-space: normal !important;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="sidebar__title">Salesforce 리포트</h1>
+      <p class="sidebar__subtitle">Lead 분석 대시보드</p>
+      <nav class="sidebar__nav">
+        <a href="/cs/lead/dashboard">월간 리드 현황</a>
+        <a href="/cs/lead/dashboard/daily">일자별 리드</a>
+        <a href="/cs/lead/insights">전환 인사이트</a>
+        <a href="/cs/lead/contracts">계약 현황</a>
+        <a href="/cs/opportunity/kanban">영업기회 칸반</a>
+        <a href="/cs/lead/tasks/outbound-sensitivity">감도 Task 모니터링</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="page-header">
+        <h2 class="page-header__title">감도 Task 모니터링</h2>
+        <p class="page-header__desc">최근 31일간 아웃바운드 리드 기반의 감도 관련 Task를 확인하세요.</p>
+      </div>
+
+      <div class="toolbar">
+        <button id="refreshBtn" type="button">새로고침</button>
+        <label for="groupSelect">그룹:</label>
+        <select id="groupSelect">
+          <option value="ownerName" selected>담당자</option>
+          <option value="leadSido">시/도</option>
+          <option value="leadSigugun">시/군/구</option>
+          <option value="">그룹 없음</option>
+        </select>
+        <button id="collapseAllBtn" type="button">모두 접기</button>
+        <button id="expandAllBtn" type="button">모두 펼치기</button>
+      </div>
+
+      <div class="summary-card" id="summaryCard"></div>
+
+      <section class="insight-block" aria-labelledby="task-grid-title">
+        <div class="table-wrapper">
+          <table id="taskGrid"></table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.10.3/jquery-ui.min.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/i18n/grid.locale-kr.js"></script>
+  <script src="//cdn.jsdelivr.net/jqgrid/4.6.0/jquery.jqGrid.src.js"></script>
+  <script src="/cs/static/shared/cs-common.js"></script>
+  <script src="/cs/static/assets/gridCommon.js"></script>
+  <script>
+    (function () {
+      var GC = window.gridCommon || {};
+      var API_BASE = GC.API_BASE || "/cs/api";
+      var gridInitialized = false;
+
+      function formatDate(value) {
+        if (!value) return '-';
+        try {
+          var dt = new Date(value);
+          if (!isNaN(dt.getTime())) {
+            return dt.toLocaleString('ko-KR', { hour12: false });
+          }
+        } catch (err) {
+          return value;
+        }
+        return value;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function formatDescription(value) {
+        if (!value) return '-';
+        return escapeHtml(String(value)).replace(/\n/g, '<br />');
+      }
+
+      function formatContact(value, opts, row) {
+        if (!row) return '-';
+        var parts = [];
+        if (row.leadStoreContact) parts.push(escapeHtml(row.leadStoreContact));
+        if (row.leadPhone) parts.push('전화: ' + escapeHtml(row.leadPhone));
+        if (row.leadMobilePhone) parts.push('모바일: ' + escapeHtml(row.leadMobilePhone));
+        if (!parts.length) return '-';
+        return parts.join('<br />');
+      }
+
+      function renderSummaryCard(payload) {
+        var $card = document.getElementById('summaryCard');
+        $card.innerHTML = '';
+        var items = [
+          { label: '검출 Task 수', value: (payload.count || 0) + '건' },
+          { label: '고유 리드 수', value: (payload.leadCount || 0) + '명' }
+        ];
+        items.forEach(function (item) {
+          var div = document.createElement('div');
+          div.className = 'summary-card__item';
+          div.innerHTML = '<span class="summary-card__label">' + item.label + '</span><span class="summary-card__value">' + item.value + '</span>';
+          $card.appendChild(div);
+        });
+      }
+
+      function getSelectedGroupField() {
+        var select = document.getElementById('groupSelect');
+        return select ? select.value : 'ownerName';
+      }
+
+      function getGroupLabel(field) {
+        if (field === 'ownerName') return '담당자';
+        if (field === 'leadSido') return '시/도';
+        if (field === 'leadSigugun') return '시/군/구';
+        return '그룹';
+      }
+
+      function applyGrouping($grid, field, overrides) {
+        if (!$grid || !$grid.length) return;
+        if (!field) {
+          try {
+            $grid.jqGrid('groupingRemove', true);
+          } catch (err) {
+            // grouping not initialized yet
+          }
+          $grid.trigger('reloadGrid');
+          return;
+        }
+
+        var label = getGroupLabel(field);
+        try {
+          $grid.jqGrid('groupingRemove', true);
+        } catch (err2) {
+          // ignore
+        }
+
+        var config = {
+          groupColumnShow: [false],
+          groupText: [label + ': <strong>{0}</strong> ({1}건)'],
+          groupOrder: ['asc'],
+          groupSummary: [false],
+          groupCollapse: true,
+          groupDataSorted: true,
+          groupField: [field]
+        };
+
+        if (overrides && typeof overrides === 'object') {
+          Object.keys(overrides).forEach(function (key) {
+            config[key] = overrides[key];
+          });
+        }
+
+        $grid.jqGrid('groupingGroupBy', field, config);
+      }
+
+      function refreshGridData(rows) {
+        var $grid = $('#taskGrid');
+        $grid.jqGrid('clearGridData');
+        for (var i = 0; i < rows.length; i++) {
+          $grid.jqGrid('addRowData', i + 1, rows[i]);
+        }
+        setTimeout(function () {
+          applyGrouping($grid, getSelectedGroupField());
+        }, 30);
+      }
+
+      function buildGrid(data) {
+        var rows = Array.isArray(data) ? data : [];
+        if (!gridInitialized) {
+          if (window.jQuery && window.jQuery.jgrid) {
+            window.jQuery.jgrid.no_legacy_api = true;
+            window.jQuery.jgrid.useJSON = true;
+          }
+
+          $('#taskGrid').jqGrid({
+            datatype: 'local',
+            data: [],
+            grouping: true,
+            colNames: [
+              'Lead ID', '업체', '시/도', '시/군/구', '주소',
+              '설명', '담당자', '리드명', '연락처', '업종', '리드 상태',
+              '리드 소스', '이미지', '오디오', '생성일'
+            ],
+            colModel: [
+              {
+                name: 'leadId',
+                width: 160,
+                formatter: function (value) {
+                  if (!value) return '-';
+                  var url = 'https://torder.lightning.force.com/lightning/r/Lead/' + encodeURIComponent(value) + '/view';
+                  return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + value + '</a>';
+                }
+              },
+              { name: 'leadCompany', width: 160 },
+              { name: 'leadSido', width: 80, align: 'center' },
+              { name: 'leadSigugun', width: 120, align: 'center' },
+              { name: 'leadRoadAddress', width: 220 },
+              {
+                name: 'description',
+                width: 260,
+                cellattr: function () { return 'class="description-cell"'; },
+                formatter: formatDescription
+              },
+              { name: 'ownerName', width: 130, align: 'center' },
+              { name: 'leadName', width: 120, align: 'center', hidden: true },
+              {
+                name: 'leadPhone',
+                width: 160,
+                formatter: formatContact
+              },
+              { name: 'leadIndustry', width: 180, align: 'center' },
+              { name: 'leadStatus', width: 100, align: 'center' },
+              { name: 'leadSource', width: 110, align: 'center', hidden: true },
+              {
+                name: 'imageUrls',
+                width: 120,
+                formatter: function (value) {
+                  if (!Array.isArray(value) || !value.length) return '-';
+                  return value.map(function (url, idx) {
+                    return '<a href="' + url + '" target="_blank">이미지 ' + (idx + 1) + '</a>';
+                  }).join(', ');
+                }
+              },
+              {
+                name: 'audioUrls',
+                width: 120,
+                formatter: function (value) {
+                  if (!Array.isArray(value) || !value.length) return '-';
+                  return value.map(function (url, idx) {
+                    return '<a href="' + url + '" target="_blank">오디오 ' + (idx + 1) + '</a>';
+                  }).join(', ');
+                }
+              },
+              { name: 'createdDate', width: 160, align: 'center', formatter: formatDate }
+            ],
+            rowNum: 100000,
+            rowList: [],
+            viewrecords: true,
+            height: 800,
+            autowidth: true,
+            shrinkToFit: false,
+            loadComplete: function () {
+              var $grid = $('#taskGrid');
+              var newW = $grid.closest('.table-wrapper').width();
+              if (newW) $grid.jqGrid('setGridWidth', newW);
+            }
+          });
+
+          $(window).on('resize.taskGrid', function () {
+            var $grid = $('#taskGrid');
+            var newW = $grid.closest('.table-wrapper').width();
+            if (newW) $grid.jqGrid('setGridWidth', newW);
+          });
+
+          gridInitialized = true;
+        }
+
+        refreshGridData(rows);
+      }
+
+      function loadData() {
+        if (!API_BASE) {
+          alert('API 주소를 확인하세요.');
+          return;
+        }
+
+        fetch(API_BASE + '/tasks/outbound-sensitivity')
+          .then(function (resp) {
+            if (!resp.ok) throw new Error('서버 오류: ' + resp.status);
+            return resp.json();
+          })
+          .then(function (payload) {
+            renderSummaryCard(payload);
+            buildGrid(payload.records || []);
+          })
+          .catch(function (err) {
+            console.error(err);
+            alert('데이터를 불러오지 못했습니다: ' + err.message);
+          });
+      }
+
+      document.getElementById('refreshBtn').addEventListener('click', loadData);
+
+      var groupSelectEl = document.getElementById('groupSelect');
+      if (groupSelectEl) {
+        groupSelectEl.addEventListener('change', function () {
+          applyGrouping($('#taskGrid'), this.value);
+        });
+      }
+
+      var collapseBtn = document.getElementById('collapseAllBtn');
+      if (collapseBtn) {
+        collapseBtn.addEventListener('click', function () {
+          var field = getSelectedGroupField();
+          if (!field) return;
+          applyGrouping($('#taskGrid'), field, { groupCollapse: true });
+        });
+      }
+
+      var expandBtn = document.getElementById('expandAllBtn');
+      if (expandBtn) {
+        expandBtn.addEventListener('click', function () {
+          var field = getSelectedGroupField();
+          if (!field) return;
+          applyGrouping($('#taskGrid'), field, { groupCollapse: false });
+          try {
+            $('#taskGrid').jqGrid('groupingExpandAll');
+          } catch (err) {
+            // ignore
+          }
+        });
+      }
+
+      loadData();
+    })();
+  </script>
+</body>
+</html>

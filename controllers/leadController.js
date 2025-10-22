@@ -38,6 +38,19 @@ async function queryAll(instanceUrl, accessToken, soql) {
   return records;
 }
 
+async function searchAll(instanceUrl, accessToken, sosl) {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const url = `${instanceUrl}/services/data/${API_VERSION}/search?q=${encodeURIComponent(sosl)}`;
+  const response = await axios.get(url, { headers });
+  if (Array.isArray(response.data?.searchRecords)) {
+    return response.data.searchRecords;
+  }
+  if (Array.isArray(response.data?.records)) {
+    return response.data.records;
+  }
+  return Array.isArray(response.data) ? response.data : [];
+}
+
 const esc = (value) => String(value ?? '').replace(/'/g, "\\'");
 
 function computeRange({ month, start, end }) {
@@ -113,6 +126,190 @@ exports.renderLeadInsights = (req, res) => {
 exports.renderLeadContracts = (req, res) => {
   if (!ensureTokenOrRedirect(res)) return;
   res.sendFile(path.join(VIEW_DIR, 'contract.html'));
+};
+
+exports.renderOutboundSensitivityTasks = (req, res) => {
+  if (!ensureTokenOrRedirect(res)) return;
+  res.sendFile(path.join(VIEW_DIR, 'outbound-sensitivity.html'));
+};
+
+exports.getOutboundSensitivityTasks = async (req, res) => {
+  const token = ensureTokenOrJson(res);
+  if (!token) return;
+
+  try {
+    const accessToken = token.access_token;
+    const instanceUrl = token.instance_url;
+    const searchTerm = '영업 AND 감도 AND (상) OR (중) ';
+    const sosl = [
+      `FIND {${searchTerm}} IN ALL FIELDS RETURNING`,
+      ' Task(',
+      'Id, Subject, Description, Status, ActivityDate, Owner.Name, WhoId, CreatedDate',
+      " WHERE WhoId IN (SELECT Id FROM Lead WHERE LeadSource = '아웃바운드' AND Status != 'Qualified'  AND Status != '종료')",
+      ' AND (CreatedDate = LAST_N_DAYS:60 OR ActivityDate = LAST_N_DAYS:60)',
+      ' ORDER BY CreatedDate DESC',
+      ' LIMIT 2000',
+      ')',
+    ].join('');
+
+    const records = await searchAll(instanceUrl, accessToken, sosl);
+    const urlRegex = /https?:\/\/[^\s]+/g;
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.bmp', '.webp'];
+    const audioExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'];
+
+    const classifyUrl = (url) => {
+      const lower = String(url || '').toLowerCase();
+      if (imageExtensions.some((ext) => lower.endsWith(ext))) return 'image';
+      if (audioExtensions.some((ext) => lower.endsWith(ext))) return 'audio';
+      return 'other';
+    };
+
+    const sanitizeDescription = (text) => {
+      if (!text) return '';
+      return text
+        .split(/\r?\n/)
+        .map((line) => {
+          if (!line) return '';
+          let cleaned = line.replace(urlRegex, '').trim();
+          if (!cleaned) return '';
+          if (/^[📸🎧]/.test(cleaned)) return '';
+          cleaned = cleaned.replace(/^(?:\[[^\]]*\]\s*)?-+\s*/, '').trim();
+          return cleaned;
+        })
+        .filter(Boolean)
+        .join('\n');
+    };
+
+    const rawTasks = records
+      .filter((rec) => rec && rec.attributes?.type === 'Task')
+      .map((rec) => {
+        const descriptionRaw = rec.Description || '';
+        const urls = descriptionRaw.match(urlRegex) || [];
+        const images = [];
+        const audios = [];
+        urls.forEach((url) => {
+          const type = classifyUrl(url);
+          if (type === 'image') images.push(url);
+          else if (type === 'audio') audios.push(url);
+        });
+        const description = sanitizeDescription(descriptionRaw);
+        return {
+          id: rec.Id,
+          subject: rec.Subject || null,
+          description: description || null,
+          descriptionRaw: descriptionRaw || null,
+          status: rec.Status || null,
+          activityDate: rec.ActivityDate || null,
+          createdDate: rec.CreatedDate || null,
+          whoId: rec.WhoId || null,
+          ownerName: rec.Owner?.Name || rec['Owner.Name'] || null,
+          ownerId: rec.Owner?.Id || null,
+          imageUrls: images,
+          audioUrls: audios,
+        };
+      });
+
+    const leadMap = new Map();
+    const leadRangeSoql = `SELECT Id, Name, Company, Status, LeadSource, CreatedDate, OwnerId, Owner.Name, Sido__c, Sigugun__c, RoadAddress__c, Phone, MobilePhone, Store_Contact__c, Industry__c FROM Lead WHERE LeadSource = '아웃바운드' AND CreatedDate = LAST_N_DAYS:31 ORDER BY CreatedDate DESC`;
+    const recentLeadRecords = await queryAll(instanceUrl, accessToken, leadRangeSoql);
+    recentLeadRecords.forEach((lead) => {
+      leadMap.set(lead.Id, {
+        id: lead.Id,
+        leadName: lead.Name || null,
+        leadCompany: lead.Company || null,
+        leadStatus: lead.Status || null,
+        leadSource: lead.LeadSource || null,
+        leadCreatedDate: lead.CreatedDate || null,
+        leadOwnerId: lead.OwnerId || null,
+        leadOwnerName: lead.Owner?.Name || null,
+        leadSido: lead.Sido__c || null,
+        leadSigugun: lead.Sigugun__c || null,
+        leadRoadAddress: lead.RoadAddress__c || null,
+        leadPhone: lead.Phone || null,
+        leadMobilePhone: lead.MobilePhone || null,
+        leadStoreContact: lead.Store_Contact__c || null,
+        leadIndustry: lead.Industry__c || null,
+      });
+    });
+
+    const missingLeadIds = Array.from(
+      new Set(
+        rawTasks
+          .map((task) => task.whoId)
+          .filter(Boolean)
+          .filter((id) => !leadMap.has(id)),
+      ),
+    );
+
+    if (missingLeadIds.length) {
+      const chunkSize = 100;
+      for (let i = 0; i < missingLeadIds.length; i += chunkSize) {
+        const chunkIds = missingLeadIds.slice(i, i + chunkSize).map((id) => `'${esc(id)}'`).join(',');
+        const soqlLead = `SELECT Id, Name, Company, Status, LeadSource, CreatedDate, OwnerId, Owner.Name, Sido__c, Sigugun__c, RoadAddress__c, Phone, MobilePhone, Store_Contact__c, Industry__c FROM Lead WHERE Id IN (${chunkIds})`;
+        const leadRecords = await queryAll(instanceUrl, accessToken, soqlLead);
+        leadRecords.forEach((lead) => {
+          leadMap.set(lead.Id, {
+            id: lead.Id,
+            leadName: lead.Name || null,
+            leadCompany: lead.Company || null,
+            leadStatus: lead.Status || null,
+            leadSource: lead.LeadSource || null,
+            leadCreatedDate: lead.CreatedDate || null,
+            leadOwnerId: lead.OwnerId || null,
+            leadOwnerName: lead.Owner?.Name || null,
+            leadSido: lead.Sido__c || null,
+            leadSigugun: lead.Sigugun__c || null,
+            leadRoadAddress: lead.RoadAddress__c || null,
+            leadPhone: lead.Phone || null,
+            leadMobilePhone: lead.MobilePhone || null,
+            leadStoreContact: lead.Store_Contact__c || null,
+            leadIndustry: lead.Industry__c || null,
+          });
+        });
+      }
+    }
+
+    const tasksWithLead = rawTasks.map((task) => {
+      const leadInfo = task.whoId ? leadMap.get(task.whoId) || null : null;
+      if (!leadInfo) return task;
+      const { id: leadId, ...restLead } = leadInfo;
+      return {
+        ...task,
+        leadId,
+        ...restLead,
+      };
+    });
+
+    const seenLeadIds = new Set();
+    const tasks = [];
+    tasksWithLead.forEach((task) => {
+      if (task.leadId) {
+        if (seenLeadIds.has(task.leadId)) return;
+        seenLeadIds.add(task.leadId);
+      }
+      tasks.push(task);
+    });
+
+    const leads = Array.from(leadMap.values()).sort((a, b) => {
+      const aDate = a.leadCreatedDate ? new Date(a.leadCreatedDate) : null;
+      const bDate = b.leadCreatedDate ? new Date(b.leadCreatedDate) : null;
+      if (aDate && bDate) return bDate - aDate;
+      if (bDate) return 1;
+      if (aDate) return -1;
+      return 0;
+    });
+
+    res.status(200).json({
+      query: sosl,
+      count: tasks.length,
+      records: tasks,
+      leadCount: leads.length,
+    });
+  } catch (err) {
+    const message = err.response?.data || err.message || String(err);
+    console.error('GET /cs/api/tasks/outbound-sensitivity error', message);
+    res.status(500).json({ error: message });
+  }
 };
 
 exports.getDailyByOwner = async (req, res) => {
