@@ -1,9 +1,26 @@
-const axios = require('axios');
+const { MongoClient } = require('mongodb');
 
-const API_VER = process.env.SF_API_VERSION || 'v60.0';
-const BASE_PRICE = 648000;
+const CONTRACT_STATUSES = [
+    '계약서명완료',
+    '계약서명대기',
+];
 
-const esc = (s) => String(s ?? '').replace(/'/g, "\\'");
+const CONTRACT_MONGO_URI = process.env.CONTRACT_MONGO_URI
+    || process.env.CONTRACT_MONGO_URL
+    || process.env.MONGO_URI;
+const CONTRACT_MONGO_DB = process.env.CONTRACT_MONGO_DB
+    || process.env.CONTRACT_MONGO_DB_NAME
+    || process.env.MONGO_DB_NAME
+    || 'salesforceSendBox';
+const CONTRACT_MONGO_COLLECTION = process.env.CONTRACT_MONGO_COLLECTION
+    || process.env.CONTRACT_MONGO_COLL
+    || process.env.MONGO_COLL
+    || 'CurrentContract';
+const CONTRACT_MONGO_POOL_SIZE = Number(process.env.CONTRACT_MONGO_POOL_SIZE
+    || process.env.CONTRACT_MONGO_POOL
+    || 5);
+
+let mongoClientPromise = null;
 
 function makeError(message, status = 500, code = 'UNEXPECTED') {
     const err = new Error(message);
@@ -18,7 +35,7 @@ function parseSfDate(dateStr) {
 
 function parseSfDateTime(dtStr) {
     if (!dtStr) return null;
-    const fixed = dtStr.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'); // +0900 → +09:00
+    const fixed = dtStr.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
     const d = new Date(fixed);
     return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -57,148 +74,23 @@ function parseUtmParams(raw) {
     };
 }
 
-async function sfGet(url, accessToken) {
-    const { data } = await axios.get(url, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        timeout: 30000,
-    });
-    return data;
-}
-
-async function queryAll(instanceUrl, accessToken, soql) {
-    const encoded = encodeURIComponent(soql);
-    let url = `${instanceUrl}/services/data/${API_VER}/query?q=${encoded}`;
-    let data = await sfGet(url, accessToken);
-    const records = [...data.records];
-    while (!data.done && data.nextRecordsUrl) {
-        url = `${instanceUrl}${data.nextRecordsUrl}`;
-        data = await sfGet(url, accessToken);
-        records.push(...data.records);
+async function getContractsCollection() {
+    if (!CONTRACT_MONGO_URI) {
+        throw makeError('CONTRACT_MONGO_URI is not configured', 500, 'MONGO_URI_MISSING');
     }
-    return records;
-}
 
-function normalize(record) {
-    const opportunity = record.Opportunity__r || {};
-    const account = record.Account__r || {};
-    const opportunityAccount = opportunity.Account || {};
-
-    const productRows = record.ContractProductQuoteContract__r?.records ?? [];
-    const promoRows = record.ContractProductPromotionContract__r?.records ?? [];
-
-    const oppCreated = opportunity?.CreatedDate || null;
-    const contractStart = record.CreatedDate;
-
-    const leadTime = diffDaysWithReason(oppCreated, contractStart);
-    const products = [];
-    const promotionsFromNegativeProducts = [];
-
-    for (const p of productRows) {
-        const quantity = Number(p.Quantity__c ?? 1);
-        const unitActual = Number(p.TotalPrice__c ?? 0);
-
-        if (unitActual < 0) {
-            promotionsFromNegativeProducts.push({
-                id: p.Id,
-                totalAmount: Math.abs(unitActual) * (quantity > 0 ? quantity : 1),
-                promotionName: p.fm_ContractProductFamily__c || `프로모션(${p.Id})`,
-                _source: 'product',
-            });
-            continue;
-        }
-
-        const optionExtraPerUnit = Math.max(0, unitActual - BASE_PRICE);
-        const option = optionExtraPerUnit > 0
-            ? [{ hasOption: true, optionExtraTotal: optionExtraPerUnit }]
-            : [];
-
-        products.push({
-            id: p.Id,
-            family: p.fm_ContractProductFamily__c,
-            quantity,
-            totalPrice: unitActual,
-            unitPrice: BASE_PRICE,
-            option,
+    if (!mongoClientPromise) {
+        const client = new MongoClient(CONTRACT_MONGO_URI, {
+            maxPoolSize: CONTRACT_MONGO_POOL_SIZE > 0 ? CONTRACT_MONGO_POOL_SIZE : 5,
+        });
+        mongoClientPromise = client.connect().catch((err) => {
+            mongoClientPromise = null;
+            throw err;
         });
     }
 
-    const nativePromotions = promoRows.map(pr => ({
-        id: pr.Id,
-        totalAmount: Number(pr.TotalAmount__c ?? 0),
-        promotionName: pr.PromotionName__r?.Name || '프로모션',
-        _source: 'native',
-    }));
-
-    const productsTotal = products.reduce(
-        (sum, it) => sum + Number(it.totalPrice || 0) * Number(it.quantity || 0), 0
-    );
-    const promotionsFromProductsTotal = promotionsFromNegativeProducts.reduce(
-        (sum, it) => sum + Number(it.totalAmount || 0), 0
-    );
-    const promotionsNativeTotal = nativePromotions.reduce(
-        (sum, it) => sum + Number(it.totalAmount || 0), 0
-    );
-
-    const purchaseAmount = productsTotal - promotionsFromProductsTotal;
-    const vat = Math.floor(purchaseAmount * 0.1);
-    const totalWithVat = purchaseAmount + vat;
-
-    return {
-        id: record.Id,
-        name: record.Name,
-        recordTypeId: opportunity?.RecordTypeId,
-        recordTypeName: opportunity?.RecordType?.Name,
-        accountName: account?.Name,
-        accountBranchName: account?.BranchName__c,
-        plIndustryFirst: account.PLIndustry_First__c || opportunityAccount.PLIndustry_First__c,
-        plIndustrySecond: account.PLIndustry_Second__c || opportunityAccount.PLIndustry_Second__c,
-        typeOfBusiness: account.TypeofB__c || opportunityAccount.TypeofB__c,
-        createdDate: record.CreatedDate,
-        contractDateStart: record.ContractDateStart__c,
-        contractDateEnd: record.ContractDateEnd__c,
-        contractStatus: record.ContractStatus__c,
-        TotalNumberofEveryTablet__c: opportunity?.TotalNumberofEveryTablet__c,
-        FieldUser: opportunity?.FieldUser__r?.Name,
-        BOUser: opportunity?.BOUser__r?.Name,
-        convertedLeadId: opportunity?.ConvertedLeadID__c || null,
-        leadTime,
-        leadTimeSource: { oppCreated, contractStart },
-        leadSourceOpportunity: opportunity?.LeadSource,
-        fmSido: opportunity?.fm_sido__c,
-        fmSigugun: opportunity?.fm_Sigugun__c,
-        fmStoreType: opportunity?.fm_StoreType__c,
-        opportunity: {
-            id: opportunity?.Id,
-            stageName: opportunity?.StageName,
-            ownerId: opportunity?.OwnerId,
-            ownerName: opportunity?.Owner?.Name,
-            ownerDepartment: opportunity?.Owner_Department__c,
-            accountId: opportunity?.AccountId,
-            accountName: opportunityAccount?.Name,
-            accountBranchName: opportunityAccount?.BranchName__c,
-            ru_TabletQty__c: opportunity?.ru_TabletQty__c,
-            ru_MasterTabletQty__c: opportunity?.ru_MasterTabletQty__c,
-            totalEveryTablet: opportunity?.TotalNumberofEveryTablet__c,
-            createdDate: opportunity?.CreatedDate,
-            leadSource: opportunity?.LeadSource,
-            fmSido: opportunity?.fm_sido__c,
-            fmSigugun: opportunity?.fm_Sigugun__c,
-            fmStoreType: opportunity?.fm_StoreType__c,
-            plIndustryFirst: opportunityAccount?.PLIndustry_First__c,
-            plIndustrySecond: opportunityAccount?.PLIndustry_Second__c,
-            typeOfBusiness: opportunityAccount?.TypeofB__c,
-        },
-        productsTotal,
-        promotionsFromProductsTotal,
-        promotionsNativeTotal,
-        promotionsTotal: promotionsFromProductsTotal + promotionsNativeTotal,
-        totalDiscount: promotionsFromProductsTotal + promotionsNativeTotal,
-        purchaseAmount,
-        vat,
-        totalWithVat,
-        products,
-        promotions: [...nativePromotions, ...promotionsFromNegativeProducts],
-    };
+    const client = await mongoClientPromise;
+    return client.db(CONTRACT_MONGO_DB).collection(CONTRACT_MONGO_COLLECTION);
 }
 
 function computeRange({ month, start, end }) {
@@ -220,232 +112,175 @@ function computeRange({ month, start, end }) {
     };
 }
 
-function normStage(s) {
-    return String(s || '')
-        .toLowerCase()
-        .replace(/\s+/g, '');
-}
-const targets = {
-    closedWon: new Set([
-        'closedwon',
-        '계약완료',
-        '계약 완료'
-    ].map(normStage)),
-};
-function isClosedWon(stage) { return targets.closedWon.has(normStage(stage)); }
-
-async function fetchOppHistoriesByIds(instanceUrl, accessToken, oppIds) {
-    if (!oppIds || oppIds.length === 0) return new Map();
-    const chunkSize = 100;
-    const allRows = [];
-
-    for (let i = 0; i < oppIds.length; i += chunkSize) {
-        const chunk = oppIds.slice(i, i + chunkSize).map(id => `'${esc(id)}'`).join(',');
-        const soql = `
-      SELECT CloseDate, CreatedDate, OpportunityId, PrevCloseDate, StageName
-      FROM OpportunityHistory
-      WHERE OpportunityId IN (${chunk})
-      ORDER BY CreatedDate ASC
-    `;
-        const rows = await queryAll(instanceUrl, accessToken, soql);
-        allRows.push(...rows);
+function toPlainObject(doc) {
+    const { _id, ...rest } = doc;
+    try {
+        return JSON.parse(JSON.stringify(rest));
+    } catch (err) {
+        return { ...rest };
     }
-
-    const grouped = new Map();
-    for (const r of allRows) {
-        const id = r.OpportunityId;
-        if (!grouped.has(id)) grouped.set(id, []);
-        grouped.get(id).push(r);
-    }
-    return grouped;
 }
 
-async function fetchLeadsByConvertedOppIds(instanceUrl, accessToken, oppIds) {
-    if (!oppIds?.length) return new Map();
-    const chunk = 100;
-    const out = [];
-    for (let i = 0; i < oppIds.length; i += chunk) {
-        const ids = oppIds.slice(i, i + chunk).map(id => `'${esc(id)}'`).join(',');
-        const soql = `
-        SELECT Id, CreatedDate, Company, LeadSource, utm__c, ConvertedOpportunityId
-        FROM Lead
-        WHERE IsConverted = true AND ConvertedOpportunityId IN (${ids})
-      `;
-        const rows = await queryAll(instanceUrl, accessToken, soql);
-        out.push(...rows);
-    }
-    const byOpp = new Map();
-    for (const r of out) byOpp.set(r.ConvertedOpportunityId, r);
-    return byOpp;
+function ensureTotals(contract) {
+    const products = Array.isArray(contract.products) ? contract.products : [];
+    const promotions = Array.isArray(contract.promotions) ? contract.promotions : [];
+
+    const productsTotal = products.reduce((sum, it) => {
+        const qty = Number(it.quantity ?? 0);
+        const price = Number(it.totalPrice ?? 0);
+        if (!Number.isFinite(qty) || !Number.isFinite(price)) return sum;
+        return sum + (price * qty);
+    }, 0);
+
+    const promoTotals = promotions.reduce((acc, it) => {
+        const amount = Number(it.totalAmount ?? 0);
+        if (!Number.isFinite(amount)) return acc;
+        if (it._source === 'native') {
+            acc.native += amount;
+        } else if (it._source === 'product') {
+            acc.product += amount;
+        } else {
+            acc.unknown += amount;
+        }
+        return acc;
+    }, { native: 0, product: 0, unknown: 0 });
+
+    const promotionsFromProductsTotal = Number.isFinite(Number(contract.promotionsFromProductsTotal))
+        ? Number(contract.promotionsFromProductsTotal)
+        : promoTotals.product;
+    const promotionsNativeTotal = Number.isFinite(Number(contract.promotionsNativeTotal))
+        ? Number(contract.promotionsNativeTotal)
+        : promoTotals.native;
+    const promotionsOtherTotal = promoTotals.unknown;
+
+    const purchaseAmount = Number.isFinite(Number(contract.purchaseAmount))
+        ? Number(contract.purchaseAmount)
+        : productsTotal - promotionsFromProductsTotal;
+
+    const vat = Number.isFinite(Number(contract.vat))
+        ? Number(contract.vat)
+        : Math.floor(purchaseAmount * 0.1);
+
+    const totalWithVat = Number.isFinite(Number(contract.totalWithVat))
+        ? Number(contract.totalWithVat)
+        : purchaseAmount + vat;
+
+    const promotionsTotal = promotionsFromProductsTotal + promotionsNativeTotal + promotionsOtherTotal;
+
+    return {
+        productsTotal,
+        promotionsFromProductsTotal,
+        promotionsNativeTotal,
+        promotionsTotal,
+        totalDiscount: Number.isFinite(Number(contract.totalDiscount))
+            ? Number(contract.totalDiscount)
+            : promotionsTotal,
+        purchaseAmount,
+        vat,
+        totalWithVat,
+    };
 }
 
-async function fetchLeadsByIds(instanceUrl, accessToken, leadIds) {
-    if (!leadIds?.length) return new Map();
-    const chunk = 100;
-    const out = [];
-    for (let i = 0; i < leadIds.length; i += chunk) {
-        const ids = leadIds.slice(i, i + chunk).map(id => `'${esc(id)}'`).join(',');
-        const soql = `
-        SELECT Id, CreatedDate, Company, LeadSource, utm__c, ConvertedOpportunityId
-        FROM Lead
-        WHERE Id IN (${ids})
-      `;
-        const rows = await queryAll(instanceUrl, accessToken, soql);
-        out.push(...rows);
+function ensureLeadInfo(contract) {
+    const opportunity = contract.opportunity || {};
+    const lead = contract.lead || null;
+
+    const oppCreated = contract.leadTimeSource?.oppCreated || opportunity.createdDate || null;
+    const contractStart = contract.leadTimeSource?.contractStart
+        || contract.createdDate
+        || contract.contractDateStart
+        || null;
+
+    const leadTime = contract.leadTime || diffDaysWithReason(oppCreated, contractStart);
+    const leadToOpportunity = contract.leadToOpportunity
+        || diffDaysWithReason(lead?.createdDate, opportunity.createdDate);
+
+    let normalizedLead = lead;
+    if (lead && (lead.utm || lead.utm__c) && (!lead.utmSource && !lead.utmContent && !lead.utmTerm)) {
+        const utmRaw = lead.utm || lead.utm__c;
+        const parsedUtm = parseUtmParams(utmRaw);
+        normalizedLead = {
+            ...lead,
+            utm: utmRaw,
+            utmSource: parsedUtm.utmSource,
+            utmContent: parsedUtm.utmContent,
+            utmTerm: parsedUtm.utmTerm,
+        };
     }
-    const byId = new Map();
-    for (const r of out) byId.set(r.Id, r);
-    return byId;
+
+    return {
+        lead: normalizedLead,
+        leadTime,
+        leadTimeSource: {
+            oppCreated,
+            contractStart,
+        },
+        leadToOpportunity,
+    };
 }
 
-async function getContracts(params = {}, token) {
-    if (!token?.access_token || !token?.instance_url) {
-        throw makeError('Salesforce authentication required', 401, 'SF_TOKEN_MISSING');
+function hydrateContract(doc) {
+    const contract = toPlainObject(doc);
+
+    contract.id = contract.id || contract.sfId || null;
+    contract.sfId = contract.sfId || contract.id || null;
+    contract.opportunity = contract.opportunity ? { ...contract.opportunity } : {};
+    contract.account = contract.account ? { ...contract.account } : undefined;
+    contract.products = Array.isArray(contract.products) ? [...contract.products] : [];
+    contract.promotions = Array.isArray(contract.promotions) ? [...contract.promotions] : [];
+
+    if (contract.syncedAt) {
+        const ts = new Date(contract.syncedAt);
+        contract.syncedAt = Number.isNaN(ts.getTime()) ? contract.syncedAt : ts.toISOString();
     }
+
+    const totals = ensureTotals(contract);
+    contract.productsTotal = totals.productsTotal;
+    contract.promotionsFromProductsTotal = totals.promotionsFromProductsTotal;
+    contract.promotionsNativeTotal = totals.promotionsNativeTotal;
+    contract.promotionsTotal = totals.promotionsTotal;
+    contract.totalDiscount = totals.totalDiscount;
+    contract.purchaseAmount = totals.purchaseAmount;
+    contract.vat = totals.vat;
+    contract.totalWithVat = totals.totalWithVat;
+
+    const leadMeta = ensureLeadInfo(contract);
+    contract.lead = leadMeta.lead;
+    contract.leadTime = leadMeta.leadTime;
+    contract.leadTimeSource = leadMeta.leadTimeSource;
+    contract.leadToOpportunity = leadMeta.leadToOpportunity;
+
+    return contract;
+}
+
+async function getContracts(params = {}) {
+    const collection = await getContractsCollection();
 
     const { month, start, end, ownerDept } = params;
     const { start: START, end: END } = computeRange({ month, start, end });
 
-    const dept = (typeof ownerDept === 'string' && ownerDept.trim() !== '')
-        ? ownerDept.trim()
-        : null;
+    const statusFilter = CONTRACT_STATUSES.length
+        ? { contractStatus: { $in: CONTRACT_STATUSES } }
+        : {};
 
-    const where = [
-        "Opportunity__c != NULL",
-        `ContractDateStart__c >= ${START}`,
-        `ContractDateStart__c < ${END}`,
-        `(ContractStatus__c = '계약서명완료' OR ContractStatus__c = '계약서명대기')`
-    ];
+    const query = {
+        ...statusFilter,
+        contractDateStart: { $gte: START, $lt: END },
+    };
 
-    if (dept && dept !== 'ALL' && dept !== '*') {
-        where.push(`Opportunity__r.Owner_Department__c = '${esc(dept)}'`);
-    }
-
-    const soql = `
-  SELECT
-    Id, Name, CreatedDate,
-    ContractDateStart__c, ContractDateEnd__c,
-    ContractStatus__c,
-    Opportunity__c,
-    Opportunity__r.LeadSource,
-    Opportunity__r.RecordTypeId,
-    Opportunity__r.RecordType.Name,
-    Opportunity__r.BOUser__c,
-    Opportunity__r.BOUser__r.Name,
-    Opportunity__r.FieldUser__c,
-    Opportunity__r.FieldUser__r.Name,
-    Opportunity__r.StageName,
-    Opportunity__r.Id,
-    Opportunity__r.OwnerId,
-    Opportunity__r.Owner.Name,
-    Opportunity__r.Owner_Department__c,
-    Opportunity__r.AccountId,
-    Opportunity__r.Account.Name,
-    Opportunity__r.Account.BranchName__c,
-    Opportunity__r.ru_TabletQty__c,
-    Opportunity__r.ru_MasterTabletQty__c,
-    Opportunity__r.TotalNumberofEveryTablet__c,
-    Opportunity__r.CreatedDate,
-    Opportunity__r.ConvertedLeadID__c,
-    Opportunity__r.fm_sido__c,
-    Opportunity__r.fm_Sigugun__c,
-    Opportunity__r.fm_StoreType__c,
-    Account__c,
-    Account__r.Name,
-    Account__r.BranchName__c,
-    Account__r.PLIndustry_First__c,
-    Account__r.PLIndustry_Second__c,
-    Account__r.TypeofB__c,
-    (
-      SELECT Id, fm_ContractProductFamily__c, TotalPrice__c, Quantity__c
-      FROM ContractProductQuoteContract__r
-    ),
-    (
-      SELECT Id, TotalAmount__c, PromotionName__r.Name
-      FROM ContractProductPromotionContract__r
-    )
-  FROM Contract__c
-  WHERE ${where.join(' AND ')}
-  ORDER BY CreatedDate ASC
-  `.trim();
-
-    const accessToken = token.access_token;
-    const instanceUrl = token.instance_url;
-
-    const raw = await queryAll(instanceUrl, accessToken, soql);
-    const list = raw.map(normalize);
-
-    const oppIds = list.map(it => it.opportunity?.id).filter(Boolean);
-    const histMap = await fetchOppHistoriesByIds(instanceUrl, accessToken, oppIds);
-
-    for (const it of list) {
-        const oppId = it.opportunity?.id;
-        const hist = oppId ? (histMap.get(oppId) || []) : [];
-        hist.sort((a, b) => new Date(a.CreatedDate) - new Date(b.CreatedDate));
-        const idx = hist.findIndex(h => isClosedWon(h.StageName));
-        const firstClosedWonAt = idx >= 0 ? hist[idx].CreatedDate : null;
-        const beforeFirstClosedWonAt = (idx > 0) ? hist[idx - 1].CreatedDate : null;
-        it.firstClosedWonAt = firstClosedWonAt;
-        it.beforeFirstClosedWonAt = beforeFirstClosedWonAt;
-        it.prevToFirstClose = diffDaysWithReason(beforeFirstClosedWonAt, firstClosedWonAt);
-    }
-
-    const leadIds = Array.from(new Set(
-        list.map(it => it.convertedLeadId).filter(Boolean)
-    ));
-    const leadMapById = await fetchLeadsByIds(instanceUrl, accessToken, leadIds);
-
-    const needsFallbackOppIds = list
-        .filter(it => {
-            const lid = it.opportunity?.convertedLeadId;
-            if (!lid) return true;
-            return !leadMapById.get(lid);
-        })
-        .map(it => it.opportunity.id)
-        .filter(Boolean);
-
-    const leadMapByOpp = await fetchLeadsByConvertedOppIds(instanceUrl, accessToken, needsFallbackOppIds);
-
-    for (const it of list) {
-        const lid = it.opportunity?.convertedLeadId;
-        let lead = null;
-
-        if (lid && leadMapById.has(lid)) {
-            lead = leadMapById.get(lid);
-        } else if (it.opportunity?.id && leadMapByOpp.has(it.opportunity.id)) {
-            lead = leadMapByOpp.get(it.opportunity.id);
-        }
-
-        const utmRaw = lead?.utm__c ?? lead?.UTM__c ?? lead?.Utm__c ?? null;
-        const { utmSource, utmContent, utmTerm } = parseUtmParams(utmRaw);
-
-        it.lead = lead ? {
-            id: lead.Id,
-            createdDate: lead.CreatedDate,
-            company: lead.Company || null,
-            leadSource: lead.LeadSource || null,
-            utm: utmRaw,
-            utmSource,
-            utmContent,
-            utmTerm
-        } : null;
-
-        if (!it.lead) {
-            it.leadReason = !lid ? 'missing-convertedLeadId'
-                : (!/^00Q/i.test(lid) ? 'invalid-id-format'
-                    : 'not-found-by-id-and-opportunity');
-        }
-        if (lead && it.opportunity?.createdDate) {
-            it.leadToOpportunity = diffDaysWithReason(
-                lead.CreatedDate,
-                it.opportunity.createdDate
-            );
-        } else {
-            it.leadToOpportunity = { days: null, reason: 'missing-date' };
+    if (typeof ownerDept === 'string') {
+        const trimmed = ownerDept.trim();
+        if (trimmed && trimmed !== 'ALL' && trimmed !== '*') {
+            query['opportunity.ownerDepartment'] = trimmed;
         }
     }
 
-    return list;
+    const docs = await collection
+        .find(query)
+        .sort({ contractDateStart: 1, createdDate: 1 })
+        .toArray();
+
+    return docs.map(hydrateContract);
 }
 
 module.exports = {

@@ -60,6 +60,20 @@
       white-space: normal !important;
       line-height: 1.4;
     }
+    .table-wrapper {
+      position: relative;
+    }
+    .grid-loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #1f2937;
+      z-index: 10;
+    }
   </style>
 </head>
 <body>
@@ -339,6 +353,15 @@
           return;
         }
 
+        $('#taskGrid').addClass('loading');
+        var $loading = document.createElement('div');
+        $loading.className = 'grid-loading-overlay';
+        $loading.textContent = '데이터 불러오는 중...';
+        var wrapper = document.querySelector('.table-wrapper');
+        if (wrapper) {
+          wrapper.appendChild($loading);
+        }
+
         fetch(API_BASE + '/tasks/outbound-sensitivity')
           .then(function (resp) {
             if (!resp.ok) throw new Error('서버 오류: ' + resp.status);
@@ -351,6 +374,12 @@
           .catch(function (err) {
             console.error(err);
             alert('데이터를 불러오지 못했습니다: ' + err.message);
+          })
+          .finally(function () {
+            $('#taskGrid').removeClass('loading');
+            if ($loading && $loading.parentNode) {
+              $loading.parentNode.removeChild($loading);
+            }
           });
       }
 
