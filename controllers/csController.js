@@ -1,6 +1,7 @@
 const path = require('path');
 const axios = require('axios');
 const { getToken, setToken } = require('../services/salesforceSession');
+const { fetchAllPartnersAndLeads } = require('../services/partnersLeadStore');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const VIEW_DIR = path.join(ROOT_DIR, 'views');
@@ -158,5 +159,22 @@ exports.getSpaces = async (req, res) => {
   } catch (err) {
     console.error('❌ Salesforce 쿼리 오류:', err.response?.data || err.message);
     res.status(500).json({ error: 'Salesforce 데이터 조회 실패' });
+  }
+};
+
+exports.getPartnersAndLeads = async (req, res) => {
+  const token = ensureTokenOrRedirect(res);
+  if (!token) return;
+
+  try {
+    const records = await fetchAllPartnersAndLeads();
+    res.status(200).json({
+      count: records.length,
+      records,
+    });
+  } catch (err) {
+    const message = err?.message || String(err);
+    console.error('❌ partners_and_leads 조회 실패:', message);
+    res.status(500).json({ error: message });
   }
 };

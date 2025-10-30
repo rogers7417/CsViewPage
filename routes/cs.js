@@ -18,6 +18,7 @@ router.get('/lead/tasks/outbound-sensitivity', leadController.renderOutboundSens
 router.get('/api/leads/daily-by-owner', leadController.getDailyByOwner);
 router.get('/api/leads/count-by-owner', leadController.getCountByOwner);
 router.get('/api/tasks/outbound-sensitivity', leadController.getOutboundSensitivityTasks);
+router.get('/api/partners-and-leads', csController.getPartnersAndLeads);
 router.get('/api/accounts/:accountId', csController.getAccount);
 router.get('/api/accounts/:accountId/summary', csController.getAccountSummary);
 router.get('/api/spaces', csController.getSpaces);
