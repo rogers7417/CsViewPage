@@ -7,17 +7,23 @@ const CONTRACT_STATUSES = [
 
 const CONTRACT_MONGO_URI = process.env.CONTRACT_MONGO_URI
     || process.env.CONTRACT_MONGO_URL
+    || process.env.SNAPSHOT_MONGO_URI
     || process.env.MONGO_URI;
 const CONTRACT_MONGO_DB = process.env.CONTRACT_MONGO_DB
     || process.env.CONTRACT_MONGO_DB_NAME
+    || process.env.SNAPSHOT_DB_NAME
+    || process.env.SNAPSHOT_MONGO_DB
     || process.env.MONGO_DB_NAME
     || 'salesforceSendBox';
 const CONTRACT_MONGO_COLLECTION = process.env.CONTRACT_MONGO_COLLECTION
     || process.env.CONTRACT_MONGO_COLL
+    || process.env.SNAPSHOT_COLL
+    || process.env.SNAPSHOT_MONGO_COLLECTION
     || process.env.MONGO_COLL
     || 'CurrentContract';
 const CONTRACT_MONGO_POOL_SIZE = Number(process.env.CONTRACT_MONGO_POOL_SIZE
     || process.env.CONTRACT_MONGO_POOL
+    || process.env.SNAPSHOT_MONGO_POOL_SIZE
     || 5);
 
 let mongoClientPromise = null;
