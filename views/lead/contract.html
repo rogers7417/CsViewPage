@@ -581,7 +581,9 @@
       if (dept) params.ownerDept = dept;
       setLoading(true);
       $.getJSON(API_BASE + "/contracts", params, function (contracts) {
+        console.log('[contracts] fetched', Array.isArray(contracts) ? contracts.length : 0, 'rows');
         var rows = prepareContracts(Array.isArray(contracts) ? contracts : [], ym);
+        console.log('[contracts] prepared rows', rows.length);
         buildGrid(rows);
         currentContracts = rows.slice();
         updateTitle(rows, ym, dept);
