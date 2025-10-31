@@ -626,6 +626,9 @@
       $("#expandGroupsBtn").on("click", function () { toggleAllGroups(true); });
       $("#collapseGroupsBtn").on("click", function () { toggleAllGroups(false); });
       $(window).on("resize.jqGrid", resizeMainGrid);
+      if (window.gridCommon && typeof window.gridCommon.registerGridResize === 'function') {
+        window.gridCommon.registerGridResize("#contracts", { bottomOffset: 40 });
+      }
 
       loadContracts();
     });

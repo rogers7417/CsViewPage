@@ -127,6 +127,17 @@
       var $grid = $(selector);
       if (!$grid.length || !$grid[0].grid) return;
 
+      var $wrapper = $grid.closest(".ui-jqgrid");
+      if ($wrapper.length) {
+        var maxWidth = $(selector).width() || $wrapper.parent().width();
+        if (maxWidth) {
+          $wrapper.css("max-width", maxWidth + "px");
+          $wrapper.find(".ui-jqgrid-bdiv").css({
+            overflowX: "auto",
+          });
+        }
+      }
+
       var offset = $grid.offset();
       var top = offset ? offset.top : 0;
       var vh = global.innerHeight || $(global).height() || 0;
