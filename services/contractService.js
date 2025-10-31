@@ -119,12 +119,16 @@ function computeRange({ month, start, end }) {
 }
 
 function toPlainObject(doc) {
-    const { _id, ...rest } = doc;
+    let plain;
     try {
-        return JSON.parse(JSON.stringify(rest));
+        plain = JSON.parse(JSON.stringify(doc));
     } catch (err) {
-        return { ...rest };
+        plain = { ...doc };
     }
+    if (plain && plain._id != null) {
+        plain._id = String(plain._id);
+    }
+    return plain;
 }
 
 function ensureTotals(contract) {
@@ -228,8 +232,9 @@ function ensureLeadInfo(contract) {
 function hydrateContract(doc) {
     const contract = toPlainObject(doc);
 
-    contract.id = contract.id || contract.sfId || null;
-    contract.sfId = contract.sfId || contract.id || null;
+    const mongoId = contract._id || (doc && doc._id ? String(doc._id) : null);
+    contract.id = contract.id || contract.sfId || contract.Id || mongoId || null;
+    contract.sfId = contract.sfId || contract.id || contract.Id || null;
     contract.opportunity = contract.opportunity ? { ...contract.opportunity } : {};
     contract.account = contract.account ? { ...contract.account } : undefined;
     contract.products = Array.isArray(contract.products) ? [...contract.products] : [];
