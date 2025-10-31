@@ -264,26 +264,71 @@ async function getContracts(params = {}) {
 
     const { month, start, end, ownerDept } = params;
     const { start: START, end: END } = computeRange({ month, start, end });
+    const filters = [];
 
-    const statusFilter = CONTRACT_STATUSES.length
-        ? { contractStatus: { $in: CONTRACT_STATUSES } }
-        : {};
+    const startDateISO = `${START}T00:00:00.000Z`;
+    const endDateISO = `${END}T00:00:00.000Z`;
+    const startDate = new Date(startDateISO);
+    const endDate = new Date(endDateISO);
+    const isValidDate = (d) => d instanceof Date && !Number.isNaN(d.getTime());
 
-    const query = {
-        ...statusFilter,
-        contractDateStart: { $gte: START, $lt: END },
-    };
+    const dateFields = [
+        'contractDateStart',
+        'contractDateStart__c',
+        'ContractDateStart__c',
+    ];
+
+    const dateClauses = [];
+    dateFields.forEach((field) => {
+        if (isValidDate(startDate) && isValidDate(endDate)) {
+            dateClauses.push({ [field]: { $gte: startDate, $lt: endDate } });
+        }
+        dateClauses.push({ [field]: { $gte: START, $lt: END } });
+    });
+    if (dateClauses.length) {
+        filters.push({ $or: dateClauses });
+    }
+
+    if (CONTRACT_STATUSES.length) {
+        const statusFields = [
+            'contractStatus',
+            'contractStatus__c',
+            'ContractStatus__c',
+        ];
+        const statusClauses = statusFields.map((field) => ({ [field]: { $in: CONTRACT_STATUSES } }));
+        filters.push({ $or: statusClauses });
+    }
 
     if (typeof ownerDept === 'string') {
         const trimmed = ownerDept.trim();
         if (trimmed && trimmed !== 'ALL' && trimmed !== '*') {
-            query['opportunity.ownerDepartment'] = trimmed;
+            const deptFields = [
+                'opportunity.ownerDepartment',
+                'opportunity.ownerDepartment__c',
+                'opportunity.owner_Department__c',
+                'opportunity.owner.Department__c',
+                'opportunity.ownerDepartmentName',
+            ];
+            const deptClauses = deptFields.map((field) => ({ [field]: trimmed }));
+            filters.push({ $or: deptClauses });
         }
     }
 
+    const query = (() => {
+        if (!filters.length) return {};
+        if (filters.length === 1) return filters[0];
+        return { $and: filters };
+    })();
+
+    const sortOptions = {
+        contractDateStart: 1,
+        ContractDateStart__c: 1,
+        createdDate: 1,
+    };
+
     const docs = await collection
         .find(query)
-        .sort({ contractDateStart: 1, createdDate: 1 })
+        .sort(sortOptions)
         .toArray();
 
     return docs.map(hydrateContract);
