@@ -518,6 +518,7 @@
         loadComplete: function () {
           const $grid = $("#contracts");
           const ids = $grid.jqGrid('getDataIDs');
+          console.log('[contracts] loadComplete ids', ids.length);
           function norm(s) { return String(s || '').toLowerCase().replace(/\s+/g, ''); }
           const closedWonSet = new Set(['closedwon', '계약완료', '계약 완료'].map(norm));
           for (let i = 0; i < ids.length; i++) {
@@ -558,6 +559,8 @@
       });
 
       gridInitialized = true;
+      const rect = document.getElementById("contracts")?.getBoundingClientRect();
+      console.log('[contracts] grid rect', rect);
     }
 
     function updateTitle(rows, ym, dept) {
