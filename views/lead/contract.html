@@ -736,13 +736,18 @@
       const params = { month: ym };
       if (dept) params.ownerDept = dept;
 
-      return $.getJSON(API_BASE + "/contracts", params)
-        .then((contracts) => (Array.isArray(contracts) ? contracts : []))
-        .catch((err) => {
-          console.error("계약 데이터 로딩 실패", err);
-          alert("데이터 로딩 실패: " + (err?.status || "unknown"));
-          return [];
-        });
+      return new Promise((resolve) => {
+        $.getJSON(API_BASE + "/contracts", params)
+          .done((contracts) => {
+            resolve(Array.isArray(contracts) ? contracts : []);
+          })
+          .fail((xhr, status, err) => {
+            console.error("계약 데이터 로딩 실패", err || status || xhr?.status);
+            const message = xhr && xhr.status ? xhr.status : (err || "unknown");
+            alert("데이터 로딩 실패: " + message);
+            resolve([]);
+          });
+      });
     }
 
     function refreshGrid() {
