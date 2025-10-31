@@ -96,6 +96,34 @@
             font-weight: bold;
         }
 
+        .kpi-bar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .kpi-item {
+            background: #f5f8ff;
+            border: 1px solid #d7e3ff;
+            border-radius: 6px;
+            padding: 8px 12px;
+            min-width: 150px;
+        }
+
+        .kpi-item__label {
+            display: block;
+            font-size: 12px;
+            color: #5b6b82;
+            margin-bottom: 4px;
+        }
+
+        .kpi-item__value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
         /* Close Won 이 아닌 행 색상 */
         .ui-jqgrid-btable tr.row-not-closed td {
             background-color: #ffecec !important;
@@ -140,6 +168,8 @@
         <button id="collapseGroupsBtn">그룹 모두 접기</button>
         <span id="title" style="margin-left:auto;font-weight:600;"></span>
     </div>
+
+    <div id="kpiBar" class="kpi-bar"></div>
 
     <table id="contracts"></table>
     <div id="contracts-pager"></div>
@@ -188,6 +218,70 @@
             const nums = contracts.map(c => Number(c[field])).filter(n => Number.isFinite(n));
             if (!nums.length) return null;
             return nums.reduce((a, b) => a + b, 0) / nums.length;
+        }
+        function sumField(contracts, field) {
+            var total = 0;
+            for (var i = 0; i < contracts.length; i++) {
+                var value = Number(contracts[i] ? contracts[i][field] : NaN);
+                if (Number.isFinite(value)) {
+                    total += value;
+                }
+            }
+            return total;
+        }
+        function formatDays(value) {
+            return (Number.isFinite(value) && value > 0)
+                ? value.toFixed(1) + "일"
+                : "-";
+        }
+        function updateKpis(contracts) {
+            var $bar = $("#kpiBar");
+            if (!$bar.length) return;
+
+            if (!Array.isArray(contracts) || !contracts.length) {
+                $bar.html('<div class="kpi-item"><span class="kpi-item__label">계약 데이터</span><span class="kpi-item__value">없음</span></div>');
+                return;
+            }
+
+            var totalContracts = contracts.length;
+            var totalTablets = sumField(contracts, "TotalNumberofEveryTablet__c");
+            var totalDiscount = sumField(contracts, "totalDiscount");
+            var avgLeadToOpp = calcAvg(contracts, "leadToOpportunityDays");
+            var avgLeadTime = calcAvg(contracts, "leadTimeDays");
+            var avgInstall = calcAvg(contracts, "prevToFirstCloseDays");
+            var closedWonContracts = 0;
+            var closedWonTablets = 0;
+            var closedSet = new Set(["closedwon", "계약완료", "계약완"]);
+            contracts.forEach(function (row) {
+                var stage = String(row.stageNameFlat || row.stageName || (row.opportunity && row.opportunity.stageName) || "")
+                    .toLowerCase()
+                    .replace(/\s+/g, "");
+                if (closedSet.has(stage)) {
+                    closedWonContracts += 1;
+                    var tablets = Number(row.TotalNumberofEveryTablet__c || 0);
+                    if (Number.isFinite(tablets)) closedWonTablets += tablets;
+                }
+            });
+
+            var items = [
+                { label: "계약 건수", value: totalContracts.toLocaleString("ko-KR") + "건" },
+                { label: "총 태블릿", value: fmt(totalTablets) + "대" },
+                { label: "Close Won 건수", value: closedWonContracts.toLocaleString("ko-KR") + "건" },
+                { label: "Close Won 태블릿", value: fmt(closedWonTablets) + "대" },
+                // { label: "평균 리드→기회", value: formatDays(avgLeadToOpp) },
+                // { label: "평균 계약 소요일", value: formatDays(avgLeadTime) },
+                // { label: "평균 설치 확정", value: formatDays(avgInstall) },
+                // { label: "총 할인", value: fmt(totalDiscount) + "원" }
+            ];
+
+            $bar.empty();
+            items.forEach(function (item) {
+                var html = '<div class="kpi-item">' +
+                    '<span class="kpi-item__label">' + item.label + '</span>' +
+                    '<span class="kpi-item__value">' + item.value + '</span>' +
+                    '</div>';
+                $bar.append(html);
+            });
         }
         // 화면 맞춤
         function resizeMainGrid() {
@@ -566,8 +660,11 @@
             if (dept) params.ownerDept = dept;
 
             $.getJSON(API_BASE + "/contracts", params, function (contracts) {
-                buildGrid(contracts);
+                var rows = Array.isArray(contracts) ? contracts : [];
+                updateKpis(rows);
+                buildGrid(rows);
             }).fail(function (xhr) {
+                $("#kpiBar").html('<div class="kpi-item"><span class="kpi-item__label">계약 데이터</span><span class="kpi-item__value">불러오기 실패</span></div>');
                 alert("데이터 로딩 실패: " + (xhr && xhr.status));
             });
         }
